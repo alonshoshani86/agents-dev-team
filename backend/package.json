@@ -1,0 +1,8 @@
+{
+  "name": "agents-dev-team-backend",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@anthropic-ai/claude-agent-sdk": "latest"
+  }
+}
