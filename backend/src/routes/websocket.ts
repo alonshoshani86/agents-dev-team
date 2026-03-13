@@ -71,13 +71,45 @@ function extractToolCalls(text: string): ToolCall[] {
   return tools;
 }
 
+/**
+ * Tokenize a command string into [binary, ...args] without invoking a shell.
+ * Handles basic single/double-quoted strings; special shell operators (|, &&, ;)
+ * are treated as literal tokens so they cannot be injected.
+ */
+function tokenizeCommand(command: string): string[] {
+  const tokens: string[] = [];
+  let current = "";
+  let inQuote: '"' | "'" | null = null;
+
+  for (const char of command.trim()) {
+    if (inQuote) {
+      if (char === inQuote) {
+        inQuote = null;
+      } else {
+        current += char;
+      }
+    } else if (char === '"' || char === "'") {
+      inQuote = char;
+    } else if (char === " " || char === "\t") {
+      if (current) {
+        tokens.push(current);
+        current = "";
+      }
+    } else {
+      current += char;
+    }
+  }
+  if (current) tokens.push(current);
+  return tokens;
+}
+
 async function executeTool(
   projectId: string,
   tool: ToolCall,
 ): Promise<{ success: boolean; output: string }> {
-  const { exec } = await import("child_process");
+  const { execFile } = await import("child_process");
   const { promisify } = await import("util");
-  const execAsync = promisify(exec);
+  const execFileAsync = promisify(execFile);
 
   const { action_type, details } = tool;
 
@@ -100,8 +132,12 @@ async function executeTool(
 
     if (action_type === "run_command") {
       const filesDir = await storage.projectFilesDir(projectId);
+      const commandStr = String(details.command ?? "");
+      const [binary, ...args] = tokenizeCommand(commandStr);
+      if (!binary) return { success: false, output: "Empty command" };
+
       const { stdout, stderr } = await Promise.race([
-        execAsync(String(details.command ?? ""), { cwd: filesDir }),
+        execFileAsync(binary, args, { cwd: filesDir }),
         new Promise<never>((_, reject) => setTimeout(() => reject(new Error("timeout")), 30_000)),
       ]);
       const output = `${stdout}${stderr}`.slice(0, 2000);

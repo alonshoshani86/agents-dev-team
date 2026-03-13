@@ -132,6 +132,7 @@ export class AgentRunner {
             cwd: this.cwd ?? undefined,
             permissionMode: "bypassPermissions",
             allowDangerouslySkipPermissions: true,
+            abortController: this._abortController,
           },
         },
       )) {
@@ -201,6 +202,7 @@ export class AgentRunner {
           cwd: this.cwd ?? undefined,
           permissionMode: "default",
           allowedTools: [],
+          abortController: this._abortController,
 
           canUseTool: async (toolName: string, input: unknown, context: { toolUseID?: string }) => {
             const category = getToolCategory(toolName);

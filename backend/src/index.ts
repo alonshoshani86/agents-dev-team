@@ -31,11 +31,13 @@ async function recoverInterruptedTasks(): Promise<void> {
       for (const taskId of taskIds) {
         const taskPath = path.join(tasksDir, taskId, "task.json");
         const task = await storage.readJson<Record<string, unknown>>(taskPath);
-        if (task && task.status === "running") {
+        const interruptibleStates = ["running", "choosing_agent", "waiting_input"];
+        const prevStatus = String(task?.status ?? "");
+        if (task && interruptibleStates.includes(prevStatus)) {
           task.status = "interrupted";
           task.updated_at = storage.nowIso();
           await storage.writeJson(taskPath, task);
-          console.log(`[startup] Marked task ${taskId} as interrupted (was running at last shutdown)`);
+          console.log(`[startup] Marked task ${taskId} as interrupted (was '${prevStatus}' at last shutdown)`);
         }
       }
     }

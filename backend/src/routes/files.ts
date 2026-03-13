@@ -9,8 +9,9 @@ import * as storage from "../storage.js";
 import type { FastifyInstance } from "fastify";
 
 async function getAllowedRoots(): Promise<string[]> {
-  // Always allow the data/ directory
-  const roots: string[] = [path.resolve(storage.DATA_DIR)];
+  // Always allow the data/ directory and the user's home directory
+  // (home dir is needed for the FolderPicker "browse from root" use case)
+  const roots: string[] = [path.resolve(storage.DATA_DIR), os.homedir()];
 
   // Allow any project's repo_path from their project.json
   const projectDirs = await storage.listDirs(storage.projectsDir());
