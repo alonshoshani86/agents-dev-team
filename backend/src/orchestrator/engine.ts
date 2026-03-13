@@ -53,7 +53,18 @@ class PauseLatch {
   }
 
   async wait(): Promise<void> {
-    if (this._paused) await this._promise;
+    if (this._paused) {
+      const TIMEOUT_MS = 24 * 60 * 60 * 1000; // 24 hours
+      await Promise.race([
+        this._promise,
+        new Promise<never>((_, reject) =>
+          setTimeout(
+            () => reject(new Error("Task paused timeout — auto-cancelling")),
+            TIMEOUT_MS,
+          ),
+        ),
+      ]);
+    }
   }
 }
 
@@ -155,16 +166,15 @@ function hasActiveAgent(projectId: string, excludeTaskId?: string): string | nul
   return null;
 }
 
-function updateTask(projectId: string, taskId: string, updates: Record<string, unknown>): void {
+function updateTask(projectId: string, taskId: string, updates: Record<string, unknown>): Promise<void> {
   const taskPath = path.join(storage.projectTasksDir(projectId), taskId, "task.json");
-  // Fire-and-forget async update
-  storage.readJson<Record<string, unknown>>(taskPath).then((task) => {
+  return storage.readJson<Record<string, unknown>>(taskPath).then((task) => {
     if (task) {
       Object.assign(task, updates);
       task.updated_at = storage.nowIso();
-      storage.writeJson(taskPath, task).catch(() => {});
+      return storage.writeJson(taskPath, task);
     }
-  });
+  }).catch((err) => console.error("[engine] Failed to update task:", err));
 }
 
 const AGENT_DISPLAY: Record<string, string> = {

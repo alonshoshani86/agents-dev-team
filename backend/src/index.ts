@@ -6,6 +6,7 @@
 import Fastify from "fastify";
 import fastifyCors from "@fastify/cors";
 import fastifyWebSocket from "@fastify/websocket";
+import path from "path";
 
 import { registerProjectRoutes } from "./routes/projects.js";
 import { registerConfigRoutes } from "./routes/config.js";
@@ -13,8 +14,35 @@ import { registerAgentRoutes } from "./routes/agents.js";
 import { registerTaskRoutes } from "./routes/tasks.js";
 import { registerFileRoutes } from "./routes/files.js";
 import { registerWebSocketRoutes, broadcast } from "./routes/websocket.js";
+import * as storage from "./storage.js";
 
 const PORT = parseInt(process.env.PORT ?? "8000", 10);
+
+/**
+ * On startup, mark any tasks that were left in "running" state as "interrupted".
+ * This handles the case where the server was restarted while tasks were running.
+ */
+async function recoverInterruptedTasks(): Promise<void> {
+  try {
+    const projectIds = await storage.listDirs(storage.projectsDir());
+    for (const projectId of projectIds) {
+      const tasksDir = storage.projectTasksDir(projectId);
+      const taskIds = await storage.listDirs(tasksDir);
+      for (const taskId of taskIds) {
+        const taskPath = path.join(tasksDir, taskId, "task.json");
+        const task = await storage.readJson<Record<string, unknown>>(taskPath);
+        if (task && task.status === "running") {
+          task.status = "interrupted";
+          task.updated_at = storage.nowIso();
+          await storage.writeJson(taskPath, task);
+          console.log(`[startup] Marked task ${taskId} as interrupted (was running at last shutdown)`);
+        }
+      }
+    }
+  } catch (err) {
+    console.error("[startup] Failed to recover interrupted tasks:", err);
+  }
+}
 
 async function main() {
   const app = Fastify({
@@ -25,6 +53,9 @@ async function main() {
         : undefined,
     },
   });
+
+  // --- Startup recovery: mark interrupted tasks ---
+  await recoverInterruptedTasks();
 
   // --- CORS ---
   await app.register(fastifyCors, {

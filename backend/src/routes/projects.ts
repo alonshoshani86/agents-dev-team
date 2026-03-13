@@ -14,13 +14,17 @@ export async function registerProjectRoutes(app: FastifyInstance): Promise<void>
   // POST /projects
   app.post<{
     Body: {
-      name: string;
+      name?: string;
       description?: string;
       tech_stack?: string[];
       paths?: Array<{ label?: string; path?: string }>;
     };
   }>("/projects", async (req, reply) => {
-    const { name, description = "", tech_stack = [], paths = [] } = req.body;
+    const { name, description = "", tech_stack = [], paths = [] } = req.body ?? {};
+
+    if (!name || typeof name !== "string" || name.trim() === "") {
+      return reply.code(400).send({ detail: "name is required" });
+    }
 
     const projectId = storage.generateId();
     const project = {

@@ -3,7 +3,7 @@
  */
 
 import { readFileSync } from "fs";
-import { execFile } from "child_process";
+import { execFile, execFileSync } from "child_process";
 import { promisify } from "util";
 import * as storage from "../storage.js";
 import type { FastifyInstance } from "fastify";
@@ -44,9 +44,10 @@ function findNpx(): string | null {
       return p;
     } catch { /* empty */ }
   }
-  // Fallback: try PATH
+  // Fallback: try PATH via `which npx`
   try {
-    const result = execFile.toString(); // just a check; we'll use which
+    const result = execFileSync("which", ["npx"], { encoding: "utf-8" }).trim();
+    if (result) return result;
     return null;
   } catch {
     return null;
@@ -109,8 +110,8 @@ export async function registerConfigRoutes(app: FastifyInstance): Promise<void> 
   });
 
   // POST /config/validate-key
-  app.post<{ Body: { anthropic_api_key?: string } }>("/config/validate-key", async (req) => {
-    const key = req.body.anthropic_api_key;
+  app.post<{ Body: { anthropic_api_key?: string; api_key?: string } }>("/config/validate-key", async (req) => {
+    const key = req.body.anthropic_api_key ?? req.body.api_key;
     if (!key) return { valid: false, error: "No API key provided" };
 
     try {

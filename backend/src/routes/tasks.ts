@@ -60,7 +60,10 @@ export async function registerTaskRoutes(
   });
 
   // GET /projects/:projectId/tasks
-  app.get<{ Params: { projectId: string } }>("/projects/:projectId/tasks", async (req) => {
+  app.get<{ Params: { projectId: string } }>("/projects/:projectId/tasks", async (req, reply) => {
+    const project = await storage.readJson(storage.projectJsonPath(req.params.projectId));
+    if (!project) return reply.code(404).send({ detail: "Project not found" });
+
     const { readdir } = await import("fs/promises");
     const tasksDir = storage.projectTasksDir(req.params.projectId);
     try {
@@ -156,8 +159,10 @@ export async function registerTaskRoutes(
   app.post<{ Params: { projectId: string; taskId: string } }>(
     "/projects/:projectId/tasks/:taskId/pause",
     async (req, reply) => {
+      const taskExists = await getTask(req.params.projectId, req.params.taskId);
+      if (!taskExists) return reply.code(404).send({ detail: "Task not found" });
       if (!engine.pauseTask(req.params.taskId)) {
-        return reply.code(404).send({ detail: "Task not running" });
+        return reply.code(400).send({ detail: "Task not running" });
       }
       await broadcast(req.params.projectId, {
         type: "task_paused",
@@ -188,6 +193,11 @@ export async function registerTaskRoutes(
     async (req, reply) => {
       const task = await getTask(req.params.projectId, req.params.taskId);
       if (!task) return reply.code(404).send({ detail: "Task not found" });
+
+      const terminalStates = ["cancelled", "completed", "failed"];
+      if (terminalStates.includes(String(task.status ?? ""))) {
+        return reply.code(400).send({ detail: "Task is already in terminal state" });
+      }
 
       engine.cancelTask(req.params.taskId);
 

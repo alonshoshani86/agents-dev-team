@@ -3,37 +3,72 @@
  */
 
 import { existsSync, statSync, readdirSync } from "fs";
+import path from "path";
 import os from "os";
+import * as storage from "../storage.js";
 import type { FastifyInstance } from "fastify";
+
+async function getAllowedRoots(): Promise<string[]> {
+  // Always allow the data/ directory
+  const roots: string[] = [path.resolve(storage.DATA_DIR)];
+
+  // Allow any project's repo_path from their project.json
+  const projectDirs = await storage.listDirs(storage.projectsDir());
+  for (const projectId of projectDirs) {
+    const projectData = await storage.readJson<Record<string, unknown>>(
+      storage.projectJsonPath(projectId),
+    );
+    if (!projectData) continue;
+    const paths = (projectData.paths as Array<{ path?: string }>) ?? [];
+    for (const p of paths) {
+      if (p.path && existsSync(p.path) && statSync(p.path).isDirectory()) {
+        roots.push(path.resolve(p.path));
+      }
+    }
+  }
+
+  return roots;
+}
 
 export async function registerFileRoutes(app: FastifyInstance): Promise<void> {
   // GET /browse?path=...
-  app.get<{ Querystring: { path?: string } }>("/browse", async (req) => {
+  app.get<{ Querystring: { path?: string } }>("/browse", async (req, reply) => {
     const dirPath = req.query.path ?? os.homedir();
-    const p = dirPath;
+    const resolvedPath = path.resolve(dirPath);
 
-    if (!existsSync(p) || !statSync(p).isDirectory()) {
-      return { path: p, dirs: [], error: "Not a directory" };
+    // Security: check if the resolved path is within an allowed root
+    const allowedRoots = await getAllowedRoots();
+    const isAllowed = allowedRoots.some(
+      (root) => resolvedPath === root || resolvedPath.startsWith(root + path.sep),
+    );
+
+    if (!isAllowed) {
+      return reply.code(403).send({ detail: "Access denied" });
+    }
+
+    if (!existsSync(resolvedPath) || !statSync(resolvedPath).isDirectory()) {
+      return { path: resolvedPath, dirs: [], error: "Not a directory" };
     }
 
     const dirs: Array<{ name: string; path: string }> = [];
     try {
-      const entries = readdirSync(p, { withFileTypes: true });
+      const entries = readdirSync(resolvedPath, { withFileTypes: true });
       const sorted = [...entries].sort((a, b) => a.name.localeCompare(b.name));
       for (const entry of sorted) {
         if (entry.name.startsWith(".")) continue;
         if (entry.isDirectory()) {
-          const fullPath = `${p}/${entry.name}`;
+          const fullPath = path.join(resolvedPath, entry.name);
           dirs.push({ name: entry.name, path: fullPath });
         }
       }
     } catch {
-      return { path: p, dirs: [], error: "Permission denied" };
+      return { path: resolvedPath, dirs: [], error: "Permission denied" };
     }
 
     // Get parent (don't go above /)
-    const parent = p === "/" ? null : p.split("/").slice(0, -1).join("/") || "/";
+    const parent =
+      resolvedPath === "/" ? null : resolvedPath.split("/").slice(0, -1).join("/") || "/";
 
-    return { path: p, parent, dirs };
+    return { path: resolvedPath, parent, dirs };
   });
 }
