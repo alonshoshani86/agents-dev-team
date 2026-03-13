@@ -176,8 +176,10 @@ export async function registerTaskRoutes(
   app.post<{ Params: { projectId: string; taskId: string } }>(
     "/projects/:projectId/tasks/:taskId/resume",
     async (req, reply) => {
+      const taskExists = await getTask(req.params.projectId, req.params.taskId);
+      if (!taskExists) return reply.code(404).send({ detail: "Task not found" });
       if (!engine.resumeTask(req.params.taskId)) {
-        return reply.code(404).send({ detail: "Task not running" });
+        return reply.code(400).send({ detail: "Task not paused" });
       }
       await broadcast(req.params.projectId, {
         type: "task_resumed",
@@ -219,8 +221,10 @@ export async function registerTaskRoutes(
     Params: { projectId: string; taskId: string };
     Body: { agent?: string | null };
   }>("/projects/:projectId/tasks/:taskId/next-agent", async (req, reply) => {
+    const taskExists = await getTask(req.params.projectId, req.params.taskId);
+    if (!taskExists) return reply.code(404).send({ detail: "Task not found" });
     if (!engine.setNextAgent(req.params.taskId, req.body.agent ?? null)) {
-      return reply.code(404).send({ detail: "Task not running" });
+      return reply.code(400).send({ detail: "Task not awaiting agent selection" });
     }
     await broadcast(req.params.projectId, {
       type: "next_agent_chosen",
@@ -295,8 +299,10 @@ export async function registerTaskRoutes(
     Params: { projectId: string; taskId: string };
     Body: { context: string };
   }>("/projects/:projectId/tasks/:taskId/inject", async (req, reply) => {
+    const taskExists = await getTask(req.params.projectId, req.params.taskId);
+    if (!taskExists) return reply.code(404).send({ detail: "Task not found" });
     if (!engine.injectContext(req.params.taskId, req.body.context)) {
-      return reply.code(404).send({ detail: "Task not running" });
+      return reply.code(400).send({ detail: "Task not running" });
     }
     return { status: "injected" };
   });

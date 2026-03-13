@@ -55,14 +55,7 @@ function findNpx(): string | null {
 }
 
 function checkCliAvailable(): boolean {
-  const paths = ["/usr/local/bin/npx", "/opt/homebrew/bin/npx"];
-  for (const p of paths) {
-    try {
-      readFileSync(p);
-      return true;
-    } catch { /* empty */ }
-  }
-  return false;
+  return findNpx() !== null;
 }
 
 function maskedConfig(config: Record<string, unknown>): Record<string, unknown> {
@@ -140,15 +133,8 @@ export async function registerConfigRoutes(app: FastifyInstance): Promise<void> 
 
   // POST /config/auth-cli
   app.post("/config/auth-cli", async () => {
-    const npxPaths = ["/usr/local/bin/npx", "/opt/homebrew/bin/npx", "npx"];
-    let npx = "npx";
-    for (const p of npxPaths) {
-      try {
-        readFileSync(p);
-        npx = p;
-        break;
-      } catch { /* empty */ }
-    }
+    // Use findNpx() which checks hardcoded paths first, then falls back to PATH via `which npx`
+    const npx = findNpx() ?? "npx";
 
     const env: Record<string, string | undefined> = {
       ...process.env,
