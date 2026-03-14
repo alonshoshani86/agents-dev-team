@@ -19,6 +19,21 @@ const EMPTY_TERMINAL: AgentTerminalState = {
 
 let chunkCount = 0;
 
+// Chunk buffer: accumulate text chunks and flush at most every 80ms
+const chunkBuffer: Record<string, string> = {};
+let flushTimer: ReturnType<typeof setTimeout> | null = null;
+let flushFn: (() => void) | null = null;
+
+function bufferChunk(agent: string, content: string) {
+  chunkBuffer[agent] = (chunkBuffer[agent] ?? "") + content;
+  if (!flushTimer && flushFn) {
+    flushTimer = setTimeout(() => {
+      flushTimer = null;
+      flushFn?.();
+    }, 80);
+  }
+}
+
 export function usePipelineEvents(projectId: string | null) {
   useEffect(() => {
     console.log("[PipelineEvents] Hook called, projectId:", projectId);
@@ -59,6 +74,35 @@ export function usePipelineEvents(projectId: string | null) {
         }
       }
 
+      // Set up the chunk flush function — batches many chunks into one store update
+      flushFn = () => {
+        const agents = Object.keys(chunkBuffer);
+        if (agents.length === 0) return;
+        const tid = taskId;
+        if (!tid) return;
+        const buffered = { ...chunkBuffer };
+        for (const a of agents) delete chunkBuffer[a];
+
+        const s = useStore.getState();
+        s._updateTaskTerminals(tid, (snap) => {
+          const updated = { ...snap.agentTerminals };
+          for (const [agent, content] of Object.entries(buffered)) {
+            const terminal = updated[agent] || { ...EMPTY_TERMINAL, messages: [] };
+            const msgs = [...terminal.messages];
+            if (msgs.length > 0 && msgs[msgs.length - 1].role === "assistant") {
+              msgs[msgs.length - 1] = {
+                ...msgs[msgs.length - 1],
+                content: msgs[msgs.length - 1].content + content,
+              };
+            } else {
+              msgs.push({ role: "assistant", content });
+            }
+            updated[agent] = { ...terminal, messages: msgs, streaming: true };
+          }
+          return { agentTerminals: updated };
+        });
+      };
+
       switch (data.type) {
         case "task_started":
           store.clearContextUsage();
@@ -95,27 +139,10 @@ export function usePipelineEvents(projectId: string | null) {
           const agent = data.agent as string;
           const content = data.content as string;
           chunkCount++;
-          if (chunkCount <= 5 || chunkCount % 20 === 0) {
-            console.log(`[PipelineEvents] CHUNK #${chunkCount} agent=${agent} len=${content.length} preview="${content.substring(0, 40)}"`);
+          if (chunkCount <= 5 || chunkCount % 100 === 0) {
+            console.log(`[PipelineEvents] CHUNK #${chunkCount} agent=${agent} len=${content.length}`);
           }
-          updateTerminals((snap) => {
-            const terminal = snap.agentTerminals[agent] || { ...EMPTY_TERMINAL, messages: [] };
-            const msgs = [...terminal.messages];
-            if (msgs.length > 0 && msgs[msgs.length - 1].role === "assistant") {
-              msgs[msgs.length - 1] = {
-                ...msgs[msgs.length - 1],
-                content: msgs[msgs.length - 1].content + content,
-              };
-            } else {
-              msgs.push({ role: "assistant", content });
-            }
-            return {
-              agentTerminals: {
-                ...snap.agentTerminals,
-                [agent]: { ...terminal, messages: msgs, streaming: true },
-              },
-            };
-          });
+          bufferChunk(agent, content);
           break;
         }
 
@@ -223,6 +250,9 @@ export function usePipelineEvents(projectId: string | null) {
         }
 
         case "step_completed": {
+          // Flush any buffered chunks before marking complete
+          if (flushTimer) { clearTimeout(flushTimer); flushTimer = null; }
+          flushFn?.();
           const agent = data.agent as string;
           const display = AGENT_DISPLAY[agent] || agent;
           const nextAgent = data.next_agent as string | undefined;
@@ -453,15 +483,18 @@ export function usePipelineEvents(projectId: string | null) {
             });
           }
           // When final, persist the accumulated total + per-agent cost to the task
-          if (data.final && taskId && data.totalCostUSD !== undefined && agent) {
+          if (data.final && taskId && data.costUSD !== undefined && agent) {
+            const agentCost = data.costUSD as number || 0;
+            const totalCost = (data.totalCostUSD as number) || agentCost;
+            console.log(`[PipelineEvents] Final usage for ${agent}: costUSD=${agentCost}, totalCostUSD=${totalCost}`);
             store.updateTaskCosts(
               taskId as string,
               agent,
-              data.costUSD as number || 0,
-              data.totalCostUSD as number
+              agentCost,
+              totalCost
             );
           } else if (data.final && taskId && data.totalCostUSD !== undefined) {
-            store.updateTaskTotalCost(taskId as string, data.totalCostUSD as number);
+            store.updateTaskTotalCost(taskId as string, data.totalCostUSD as number || 0);
           }
           break;
         }
@@ -521,6 +554,10 @@ export function usePipelineEvents(projectId: string | null) {
     return () => {
       cancelled = true;
       if (reconnectTimer) clearTimeout(reconnectTimer);
+      if (flushTimer) { clearTimeout(flushTimer); flushTimer = null; }
+      flushFn = null;
+      // Clear leftover buffer
+      for (const k of Object.keys(chunkBuffer)) delete chunkBuffer[k];
       if (ws) ws.close();
     };
   }, [projectId]);

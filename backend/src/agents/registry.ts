@@ -112,8 +112,30 @@ function buildFilesContext(projectData: Record<string, unknown>): string {
 // --- Agent config ---
 
 async function loadDefaultConfig(agentName: string): Promise<Record<string, unknown>> {
-  const filePath = path.join(DEFAULTS_DIR, `${agentName}.json`);
-  const data = await storage.readJson<Record<string, unknown>>(filePath);
+  // Try .md (frontmatter + body as system_prompt) first, then .json fallback
+  const mdPath = path.join(DEFAULTS_DIR, `${agentName}.md`);
+  if (existsSync(mdPath)) {
+    try {
+      const raw = readFileSync(mdPath, "utf-8");
+      const fmMatch = raw.match(/^---\n([\s\S]*?)\n---\n([\s\S]*)$/);
+      if (fmMatch) {
+        const meta: Record<string, unknown> = {};
+        for (const line of fmMatch[1].split("\n")) {
+          const idx = line.indexOf(":");
+          if (idx > 0) {
+            const key = line.slice(0, idx).trim();
+            let val: unknown = line.slice(idx + 1).trim();
+            if (val === "null") val = null;
+            meta[key] = val;
+          }
+        }
+        meta.system_prompt = fmMatch[2].trim();
+        return { name: agentName, display_name: agentName, model: null, ...meta };
+      }
+    } catch { /* fall through */ }
+  }
+  const jsonPath = path.join(DEFAULTS_DIR, `${agentName}.json`);
+  const data = await storage.readJson<Record<string, unknown>>(jsonPath);
   return data ?? { name: agentName, display_name: agentName, system_prompt: "", model: null };
 }
 

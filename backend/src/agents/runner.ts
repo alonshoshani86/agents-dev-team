@@ -344,6 +344,8 @@ export class AgentRunner {
           const modelUsage = msg.modelUsage as Record<string, Record<string, unknown>> | undefined;
           const firstModel = modelUsage ? Object.values(modelUsage)[0] : undefined;
           const resultUsage = msg.usage as Record<string, unknown> | undefined;
+          const costUSD = Number(msg.total_cost_usd ?? firstModel?.costUSD ?? 0);
+          console.log(`[runner] Result message cost data: total_cost_usd=${msg.total_cost_usd}, firstModel?.costUSD=${firstModel?.costUSD}, resolved costUSD=${costUSD}, num_turns=${msg.num_turns}`);
           await opts.onUsage?.({
             type: "usage",
             inputTokens: Number(resultUsage?.input_tokens ?? totalInputTokens),
@@ -351,7 +353,7 @@ export class AgentRunner {
             cacheRead: Number(resultUsage?.cache_read_input_tokens ?? 0),
             cacheCreation: Number(resultUsage?.cache_creation_input_tokens ?? 0),
             contextWindow: Number(firstModel?.contextWindow ?? 200000),
-            costUSD: Number(msg.total_cost_usd ?? firstModel?.costUSD ?? 0),
+            costUSD,
             numTurns: Number(msg.num_turns ?? 0),
             final: true,
           });

@@ -201,6 +201,10 @@ function updateTask(projectId: string, taskId: string, updates: Record<string, u
   return storage.readJson<Record<string, unknown>>(taskPath).then((task) => {
     if (task) {
       Object.assign(task, updates);
+      // Clear error message when task resumes
+      if (updates.status === "running") {
+        delete task.error_message;
+      }
       task.updated_at = storage.nowIso();
       return storage.writeJson(taskPath, task);
     }
@@ -329,13 +333,45 @@ async function executeAgent(
   };
 
   const onUsage = async (usage: Record<string, unknown>) => {
+    const isFinal = !!usage.final;
+    const costUSD = usage.costUSD as number | undefined;
+
+    // When an agent finishes, persist cost to task.json
+    let totalCostUSD: number | undefined;
+    if (isFinal && costUSD != null && costUSD > 0) {
+      try {
+        const taskPath = path.join(
+          storage.projectTasksDir(execution.projectId),
+          execution.taskId,
+          "task.json",
+        );
+        const taskData = await storage.readJson<Record<string, unknown>>(taskPath);
+        if (taskData) {
+          const existingTotal = Number(taskData.total_cost_usd ?? 0);
+          totalCostUSD = existingTotal + costUSD;
+          const agentCosts = (taskData.agent_costs as Record<string, number>) ?? {};
+          agentCosts[agentName] = (agentCosts[agentName] ?? 0) + costUSD;
+          taskData.agent_costs = agentCosts;
+          taskData.total_cost_usd = totalCostUSD;
+          await storage.writeJson(taskPath, taskData);
+          console.log(`[engine] Persisted cost for ${agentName}: $${costUSD.toFixed(4)} (total: $${totalCostUSD.toFixed(4)})`);
+        }
+      } catch (err) {
+        console.error("[engine] Failed to persist cost:", err);
+      }
+    }
+
     if (onEvent) {
-      await onEvent({
+      const event: Record<string, unknown> = {
         type: "usage_update",
         task_id: execution.taskId,
         agent: agentName,
         ...usage,
-      });
+      };
+      if (totalCostUSD != null) {
+        event.totalCostUSD = totalCostUSD;
+      }
+      await onEvent(event);
     }
   };
 

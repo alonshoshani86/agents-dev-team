@@ -290,6 +290,19 @@ export function PipelineView() {
             </span>
           )}
         </div>
+        {task.error_message && (
+          <div style={{
+            background: "rgba(239, 68, 68, 0.1)",
+            border: "1px solid rgba(239, 68, 68, 0.3)",
+            borderRadius: 6,
+            padding: "8px 12px",
+            fontSize: 12,
+            color: "#ef4444",
+            marginTop: 8,
+          }}>
+            {task.error_message}
+          </div>
+        )}
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
           <div className="view-mode-toggle">
             <button
