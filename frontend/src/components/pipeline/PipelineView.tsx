@@ -68,9 +68,16 @@ export function PipelineView() {
     if (!activeProjectId || !activeTaskId || !task) return;
     setRestarting(true);
     try {
+      // If task is still running, cancel it first
+      if (task.status === "running" || task.status === "waiting_input" || task.status === "choosing_agent") {
+        await api.cancelTask(activeProjectId, activeTaskId);
+        // Brief wait for cancellation to process
+        await new Promise((r) => setTimeout(r, 500));
+      }
       const pipelineId = task.pipeline_id || "full-feature";
       useStore.getState().clearAgentTerminals();
       useStore.getState().initAgentTerminals(PIPELINE_AGENTS.map((a) => a.name));
+      useStore.getState().clearContextUsage();
       await api.runTaskPipeline(activeProjectId, activeTaskId, pipelineId);
     } catch (err) {
       console.error("Failed to restart task:", err);
@@ -145,14 +152,15 @@ export function PipelineView() {
   const showRunBar = !pipelineChoosingAgent && !pipelineWaitingInput && task?.status !== "running" && task?.status !== "pending";
 
   function detectAgentFromInput(text: string): string | null {
-    const lower = text.toLowerCase();
+    const lower = text.toLowerCase().trim();
     for (const agent of PIPELINE_AGENTS) {
-      // Match patterns like "run dev", "go to architect", "start product", "to test", "dev agent"
+      // Only match explicit commands like "run dev", "start product", "dev agent"
+      // Avoid loose patterns like "to test" which match normal sentences
       const name = agent.name;
       const display = agent.display.toLowerCase();
       if (
-        lower.match(new RegExp(`\\b(run|start|go\\s+to|move\\s+to|switch\\s+to|to)\\s+(?:the\\s+)?${name}\\b`)) ||
-        lower.match(new RegExp(`\\b(run|start|go\\s+to|move\\s+to|switch\\s+to|to)\\s+(?:the\\s+)?${display}\\b`)) ||
+        lower.match(new RegExp(`^(run|start)\\s+(?:the\\s+)?${name}$`)) ||
+        lower.match(new RegExp(`^(run|start)\\s+(?:the\\s+)?${display}$`)) ||
         lower.match(new RegExp(`\\b${name}\\s+agent\\b`)) ||
         lower.match(new RegExp(`\\b${display}\\s+agent\\b`))
       ) {
@@ -252,7 +260,7 @@ export function PipelineView() {
               {stopping ? "Stopping..." : "Stop"}
             </button>
           )}
-          {(task.status === "error" || task.status === "cancelled") && (
+          {task.status !== "pending" && (
             <button
               className="btn-restart-task"
               onClick={handleRestart}
@@ -263,6 +271,9 @@ export function PipelineView() {
           )}
         </div>
       </div>
+
+      {/* Context usage bar */}
+      <ContextBar />
 
       {/* Artifacts view */}
       {viewMode === "artifacts" && activeProjectId && (
@@ -330,6 +341,13 @@ export function PipelineView() {
               ) : msg.role === "user" ? (
                 <div className="terminal-user-msg">
                   <span className="terminal-user-label">You:</span> {msg.content}
+                </div>
+              ) : msg.role === "thinking" ? (
+                <ThinkingBlock content={msg.content} />
+              ) : msg.role === "tool" ? (
+                <div className="terminal-tool-msg">
+                  <span className="tool-icon">{msg.content.startsWith("▶") ? "⚙" : msg.content.startsWith("✓") ? "✓" : "⇐"}</span>
+                  <span className="tool-text">{msg.content.replace(/^[▶✓⇐]\s*/, "")}</span>
                 </div>
               ) : (
                 <div className="terminal-assistant">
@@ -485,6 +503,87 @@ export function PipelineView() {
 
       {/* Permission approval modal — floats over everything */}
       {activeProjectId && <PermissionModal projectId={activeProjectId} />}
+    </div>
+  );
+}
+
+
+function ThinkingBlock({ content }: { content: string }) {
+  const [expanded, setExpanded] = useState(false);
+  if (!content) return null;
+  const preview = content.length > 120 ? content.substring(0, 120) + "..." : content;
+  return (
+    <div className="terminal-thinking-block" onClick={() => setExpanded(!expanded)}>
+      <div className="thinking-header">
+        <span className="thinking-icon">💭</span>
+        <span className="thinking-label">Thinking</span>
+        <span className="thinking-toggle">{expanded ? "▾" : "▸"}</span>
+      </div>
+      <div className={`thinking-content ${expanded ? "expanded" : ""}`}>
+        {expanded ? content : preview}
+      </div>
+    </div>
+  );
+}
+
+
+const AGENT_COLORS: Record<string, string> = {
+  product: "#6366f1",
+  architect: "#8b5cf6",
+  dev: "#3b82f6",
+  test: "#22c55e",
+  uxui: "#f59e0b",
+};
+
+function formatTokens(n: number) {
+  if (n >= 1000000) return `${(n / 1000000).toFixed(1)}M`;
+  if (n >= 1000) return `${(n / 1000).toFixed(1)}k`;
+  return String(n);
+}
+
+function ContextBar() {
+  const usageMap = useStore((s) => s.contextUsage);
+  const entries = Object.entries(usageMap);
+  if (entries.length === 0) return null;
+
+  return (
+    <div className="context-bar">
+      {entries.map(([agent, usage]) => {
+        const totalTokens = usage.inputTokens + usage.outputTokens;
+        const contextWindow = usage.contextWindow || 200000;
+        const pct = Math.min((totalTokens / contextWindow) * 100, 100);
+        const barColor = pct > 80 ? "var(--error)" : pct > 50 ? "var(--warning)" : (AGENT_COLORS[agent] || "var(--accent)");
+        const display = PIPELINE_AGENTS.find((a) => a.name === agent)?.display || agent;
+
+        return (
+          <div key={agent} className="context-bar-row">
+            <div className="context-bar-labels">
+              <span className="context-bar-agent" style={{ color: AGENT_COLORS[agent] || "var(--accent)" }}>
+                {display}
+              </span>
+              <span className="context-bar-tokens">
+                {formatTokens(totalTokens)} / {formatTokens(contextWindow)}
+              </span>
+              <span className="context-bar-detail">
+                in: {formatTokens(usage.inputTokens)} &middot; out: {formatTokens(usage.outputTokens)}
+                {usage.cacheRead > 0 && <> &middot; cache: {formatTokens(usage.cacheRead)}</>}
+              </span>
+              {usage.costUSD > 0 && (
+                <span className="context-bar-cost">${usage.costUSD.toFixed(4)}</span>
+              )}
+              {usage.numTurns > 0 && (
+                <span className="context-bar-turns">{usage.numTurns} turns</span>
+              )}
+            </div>
+            <div className="context-bar-track">
+              <div
+                className="context-bar-fill"
+                style={{ width: `${pct}%`, backgroundColor: barColor }}
+              />
+            </div>
+          </div>
+        );
+      })}
     </div>
   );
 }

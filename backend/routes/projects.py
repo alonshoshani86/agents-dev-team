@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import asyncio
+import os
 from typing import List, Optional
 
 from fastapi import APIRouter, HTTPException
@@ -97,3 +99,34 @@ async def delete_project(project_id: str):
         raise HTTPException(status_code=404, detail="Project not found")
     storage.delete_path(path)
     return {"deleted": True}
+
+
+@router.get("/{project_id}/git-branch")
+async def get_git_branch(project_id: str):
+    """Get the current git branch for the project's first path."""
+    data = storage.read_json(storage.project_json_path(project_id))
+    if not data:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    paths = data.get("paths", [])
+    if not paths:
+        return {"branch": None}
+
+    cwd = paths[0].get("path", "")
+    if not cwd or not os.path.isdir(cwd):
+        return {"branch": None}
+
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            "git", "rev-parse", "--abbrev-ref", "HEAD",
+            cwd=cwd,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        stdout, _ = await proc.communicate()
+        if proc.returncode == 0:
+            return {"branch": stdout.decode().strip()}
+    except Exception:
+        pass
+
+    return {"branch": None}

@@ -13,13 +13,10 @@ interface Props {
   onClose: () => void;
 }
 
-const ALL_AGENTS = ["product", "architect", "dev", "test", "uxui"];
-
 export function NewTaskModal({ onClose }: Props) {
   const activeProjectId = useStore((s) => s.activeProjectId);
   const fetchTasks = useStore((s) => s.fetchTasks);
   const setActiveTask = useStore((s) => s.setActiveTask);
-  const initAgentTerminals = useStore((s) => s.initAgentTerminals);
   const setActiveView = useStore((s) => s.setActiveView);
 
   const [title, setTitle] = useState("");
@@ -49,14 +46,11 @@ export function NewTaskModal({ onClose }: Props) {
         pipeline_id: selectedPipeline,
       });
 
-      // Init agent terminals for all agents (dynamic routing can reach any)
-      initAgentTerminals(ALL_AGENTS);
+      // Switch to pipeline view (setActiveTask caches current terminals and inits new ones)
+      setActiveTask(task.id);
 
       // Start pipeline
       await api.runTaskPipeline(activeProjectId, task.id, selectedPipeline);
-
-      // Switch to pipeline view
-      setActiveTask(task.id);
       setActiveView("pipeline");
       await fetchTasks(activeProjectId);
 

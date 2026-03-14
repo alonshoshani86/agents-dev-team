@@ -64,6 +64,25 @@ body {
   color: var(--text-primary);
 }
 
+.topbar-branch {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: 12px;
+  padding: 2px 10px;
+  font-size: 12px;
+  font-weight: 500;
+  color: #a78bfa;
+  background: rgba(167, 139, 250, 0.1);
+  border: 1px solid rgba(167, 139, 250, 0.2);
+  border-radius: 12px;
+  font-family: "SF Mono", "Fira Code", monospace;
+}
+
+.topbar-branch-icon {
+  font-size: 13px;
+}
+
 .topbar-spacer {
   flex: 1;
 }
@@ -1372,6 +1391,68 @@ body {
   flex-shrink: 0;
 }
 
+/* Context usage bar */
+.context-bar {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 6px 20px;
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.context-bar-row {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.context-bar-labels {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 11px;
+}
+
+.context-bar-agent {
+  color: var(--accent);
+  font-weight: 600;
+  text-transform: capitalize;
+}
+
+.context-bar-tokens {
+  color: var(--text-primary);
+  font-family: "SF Mono", "Fira Code", monospace;
+}
+
+.context-bar-detail {
+  color: var(--text-muted);
+  font-family: "SF Mono", "Fira Code", monospace;
+}
+
+.context-bar-cost {
+  color: var(--warning);
+  font-family: "SF Mono", "Fira Code", monospace;
+}
+
+.context-bar-turns {
+  color: var(--text-secondary);
+}
+
+.context-bar-track {
+  height: 4px;
+  background: var(--bg-tertiary);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.context-bar-fill {
+  height: 100%;
+  border-radius: 2px;
+  transition: width 0.3s ease, background-color 0.3s ease;
+}
+
 .pipeline-task-info {
   display: flex;
   align-items: center;
@@ -1622,6 +1703,76 @@ body {
   color: #58a6ff;
   padding: 4px 0;
   font-style: italic;
+}
+
+/* Thinking block */
+.terminal-thinking-block {
+  background: rgba(139, 92, 246, 0.08);
+  border-left: 2px solid rgba(139, 92, 246, 0.4);
+  border-radius: 4px;
+  padding: 6px 10px;
+  margin: 4px 0;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.terminal-thinking-block:hover {
+  background: rgba(139, 92, 246, 0.14);
+}
+.thinking-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: #a78bfa;
+  font-weight: 500;
+}
+.thinking-icon {
+  font-size: 13px;
+}
+.thinking-toggle {
+  margin-left: auto;
+  font-size: 10px;
+  opacity: 0.6;
+}
+.thinking-content {
+  font-size: 12px;
+  color: #9ca3af;
+  margin-top: 4px;
+  line-height: 1.4;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.thinking-content:not(.expanded) {
+  max-height: 40px;
+  overflow: hidden;
+}
+.thinking-content.expanded {
+  max-height: none;
+}
+
+/* Tool use messages */
+.terminal-tool-msg {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  padding: 3px 0;
+  color: #9ca3af;
+  font-family: "SF Mono", "Fira Code", "Cascadia Code", monospace;
+}
+.tool-icon {
+  flex-shrink: 0;
+  width: 16px;
+  text-align: center;
+  font-size: 12px;
+}
+.terminal-msg.tool .tool-icon {
+  color: #f59e0b;
+}
+.terminal-msg.tool .tool-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* Task list in sidebar */

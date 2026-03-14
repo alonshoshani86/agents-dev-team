@@ -150,6 +150,8 @@ class AgentRunner:
         on_permission: PermissionCallback,
         context: Optional[str] = None,
         auto_approve_read: bool = True,
+        on_usage: Optional[Callable[[dict], Coroutine[None, None, None]]] = None,
+        on_activity: Optional[Callable[[dict], Coroutine[None, None, None]]] = None,
     ) -> AsyncGenerator[str, None]:
         """Run the agent via SDK bridge with interactive permission handling.
 
@@ -159,6 +161,7 @@ class AgentRunner:
                            and must return a response dict with {id, behavior, message?}.
             context: Optional context to prepend to the message.
             auto_approve_read: If True, auto-approve read-only operations (Read, Glob, Grep).
+            on_activity: Optional callback for thinking/tool events from the agent.
         """
         node = _find_node()
         if not node:
@@ -205,7 +208,7 @@ class AgentRunner:
                     break
                 text = line.decode("utf-8", errors="replace").strip()
                 if text:
-                    logger.debug(f"[AgentRunner:{self.name}] bridge stderr: {text[:300]}")
+                    logger.info(f"[AgentRunner:{self.name}] bridge stderr: {text[:300]}")
 
         stderr_task = asyncio.create_task(_read_stderr())
 
@@ -242,6 +245,10 @@ class AgentRunner:
                 if msg_type == "chunk":
                     yield msg.get("content", "")
 
+                elif msg_type in ("thinking_start", "thinking_chunk", "tool_start", "tool_end", "tool_result"):
+                    if on_activity:
+                        await on_activity(msg)
+
                 elif msg_type == "permission_request":
                     # Forward to the callback and send response back to bridge
                     logger.info(f"[AgentRunner:{self.name}] Permission request: {msg.get('toolName')} - {msg.get('summary')}")
@@ -253,10 +260,17 @@ class AgentRunner:
                         await proc.stdin.drain()
                     except Exception as e:
                         logger.error(f"[AgentRunner:{self.name}] Permission callback error: {e}")
-                        # Deny on error
-                        deny = json.dumps({"id": msg.get("id"), "behavior": "deny", "message": str(e)}) + "\n"
-                        proc.stdin.write(deny.encode("utf-8"))
-                        await proc.stdin.drain()
+                        # Deny on error — but only if stdin is still open
+                        try:
+                            deny = json.dumps({"id": msg.get("id"), "behavior": "deny", "message": str(e)}) + "\n"
+                            proc.stdin.write(deny.encode("utf-8"))
+                            await proc.stdin.drain()
+                        except Exception:
+                            break  # Bridge process died
+
+                elif msg_type == "usage":
+                    if on_usage:
+                        await on_usage(msg)
 
                 elif msg_type == "done":
                     break

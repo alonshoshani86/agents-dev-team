@@ -35,9 +35,9 @@ export interface Artifact {
   id: string;
   type: string;
   content: string;
-  version: number;
   agent: string;
   created_at: string;
+  updated_at?: string;
 }
 
 export interface PipelineStep {

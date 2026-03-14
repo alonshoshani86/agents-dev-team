@@ -3,7 +3,7 @@ import type { Project, Task } from "../types";
 import { api } from "../api/client";
 
 export interface AgentTerminalMessage {
-  role: "system" | "assistant" | "user";
+  role: "system" | "assistant" | "user" | "thinking" | "tool";
   content: string;
 }
 
@@ -21,6 +21,17 @@ export interface AgentTerminalState {
   messages: AgentTerminalMessage[];
   streaming: boolean;
   status: "idle" | "pending" | "working" | "done" | "error";
+}
+
+export interface ContextUsage {
+  inputTokens: number;
+  outputTokens: number;
+  cacheRead: number;
+  cacheCreation: number;
+  contextWindow: number;
+  costUSD: number;
+  numTurns: number;
+  agent: string;
 }
 
 interface TaskTerminalSnapshot {
@@ -51,6 +62,7 @@ interface AppState {
   askingAgent: boolean;
   pendingPermissions: PermissionRequest[];
   autoApproveCategories: Set<string>;  // e.g. {"read", "write", "execute", "all"}
+  contextUsage: Record<string, ContextUsage>;  // keyed by agent name
   _taskTerminalsCache: Record<string, TaskTerminalSnapshot>;
 
   setActiveProject: (id: string | null) => void;
@@ -82,6 +94,8 @@ interface AppState {
   removePermissionRequest: (id: string) => void;
   setAutoApprove: (category: string) => void;
   clearAutoApprove: () => void;
+  setContextUsage: (agent: string, usage: ContextUsage) => void;
+  clearContextUsage: () => void;
   clearAgentTerminals: () => void;
   // Update terminals for a specific task (routes to active or cache)
   _updateTaskTerminals: (taskId: string, updater: (snapshot: TaskTerminalSnapshot) => Partial<TaskTerminalSnapshot>) => void;
@@ -110,6 +124,7 @@ export const useStore = create<AppState>((set, get) => ({
   askingAgent: false,
   pendingPermissions: [],
   autoApproveCategories: new Set<string>(),
+  contextUsage: {},
   _taskTerminalsCache: {},
 
   setActiveProject: (id) => set({
@@ -223,23 +238,22 @@ export const useStore = create<AppState>((set, get) => ({
     let pipelineAgentTab = restored?.pipelineAgentTab ?? null;
 
     if (!restored && taskId) {
-      const task = s.tasks.find((t) => t.id === taskId);
-      if (task && task.status !== "pending") {
-        // Initialize empty terminals for all agents
-        const terminals: Record<string, AgentTerminalState> = {};
-        for (const a of ALL_AGENTS) {
-          terminals[a] = { ...EMPTY_TERMINAL, messages: [] };
-        }
-        agentTerminals = terminals;
-        pipelineAgentTab = task.current_agent || ALL_AGENTS[0];
+      // Initialize empty terminals for all agents
+      const terminals: Record<string, AgentTerminalState> = {};
+      for (const a of ALL_AGENTS) {
+        terminals[a] = { ...EMPTY_TERMINAL, messages: [] };
+      }
+      agentTerminals = terminals;
 
-        // Load saved terminals from backend in background
-        if (s.activeProjectId) {
-          const pid = s.activeProjectId;
-          setTimeout(() => {
-            get().loadTaskTerminals(pid, taskId);
-          }, 0);
-        }
+      const task = s.tasks.find((t) => t.id === taskId);
+      pipelineAgentTab = task?.current_agent || ALL_AGENTS[0];
+
+      // Load saved terminals from backend in background
+      if (s.activeProjectId) {
+        const pid = s.activeProjectId;
+        setTimeout(() => {
+          get().loadTaskTerminals(pid, taskId);
+        }, 0);
       }
     }
 
@@ -422,6 +436,12 @@ export const useStore = create<AppState>((set, get) => ({
   }),
 
   clearAutoApprove: () => set({ autoApproveCategories: new Set() }),
+
+  setContextUsage: (agent, usage) => set((s) => ({
+    contextUsage: { ...s.contextUsage, [agent]: usage },
+  })),
+
+  clearContextUsage: () => set({ contextUsage: {} }),
 
   clearAgentTerminals: () => set({
     agentTerminals: {},

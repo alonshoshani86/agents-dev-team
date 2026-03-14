@@ -286,13 +286,13 @@ class UpdateArtifactRequest(BaseModel):
     content: str
 
 
-@router.put("/projects/{project_id}/tasks/{task_id}/artifacts/{artifact_type}/{version}")
+@router.put("/projects/{project_id}/tasks/{task_id}/artifacts/{artifact_type}")
 async def update_artifact(
-    project_id: str, task_id: str, artifact_type: str, version: int, req: UpdateArtifactRequest
+    project_id: str, task_id: str, artifact_type: str, req: UpdateArtifactRequest
 ):
     """Edit an artifact's content (human-in-the-loop editing before passing downstream)."""
     from orchestrator.models import update_artifact_content
-    result = update_artifact_content(project_id, task_id, artifact_type, version, req.content)
+    result = update_artifact_content(project_id, task_id, artifact_type, req.content)
     if not result:
         raise HTTPException(status_code=404, detail="Artifact not found")
     return result

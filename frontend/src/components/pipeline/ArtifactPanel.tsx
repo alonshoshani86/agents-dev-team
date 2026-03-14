@@ -61,7 +61,7 @@ export function ArtifactPanel({ projectId, taskId }: ArtifactPanelProps) {
     setSaving(true);
     try {
       const updated = await api.updateArtifact(
-        projectId, taskId, selected.type, selected.version, editContent
+        projectId, taskId, selected.type, editContent
       );
       // Update local state
       setArtifacts((prev) =>
@@ -89,7 +89,7 @@ export function ArtifactPanel({ projectId, taskId }: ArtifactPanelProps) {
       <div className="artifact-tabs">
         {artifacts.map((art, i) => (
           <button
-            key={`${art.type}-v${art.version}`}
+            key={art.type}
             className={`artifact-tab ${i === selectedIdx ? "active" : ""}`}
             onClick={() => { setSelectedIdx(i); setEditing(false); }}
           >
@@ -97,7 +97,7 @@ export function ArtifactPanel({ projectId, taskId }: ArtifactPanelProps) {
               {ARTIFACT_LABELS[art.type] || art.type}
             </span>
             <span className="artifact-tab-meta">
-              v{art.version} &middot; {art.agent}
+              {art.agent}
             </span>
           </button>
         ))}
@@ -108,7 +108,7 @@ export function ArtifactPanel({ projectId, taskId }: ArtifactPanelProps) {
         <div className="artifact-content">
           <div className="artifact-content-header">
             <span className="artifact-title">
-              {ARTIFACT_LABELS[selected.type] || selected.type} v{selected.version}
+              {ARTIFACT_LABELS[selected.type] || selected.type}
             </span>
             <span className="artifact-meta">
               by {selected.agent} &middot; {new Date(selected.created_at).toLocaleString()}
