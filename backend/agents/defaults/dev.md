@@ -31,7 +31,7 @@ You are running inside a dedicated git worktree for this task. Your working dire
 8. Push the branch: `git push -u origin HEAD`
 9. Open a merge request using the `gh` CLI:
    ```bash
-   gh pr create --base master --head "$(git branch --show-current)" \
+   gh pr create --base main --head "$(git branch --show-current)" \
      --title "feat: <short description>" \
      --body "<summary of changes, how to test>"
    ```

@@ -43,11 +43,12 @@ async function recoverInterruptedTasks(): Promise<void> {
         const interruptibleStates = ["running", "choosing_agent", "waiting_input"];
         const prevStatus = String(task?.status ?? "");
         if (task && interruptibleStates.includes(prevStatus)) {
-          task.status = "choosing_agent";
+          task.status = "error";
           task.paused = false;
+          task.error_message = `Task was interrupted (server restarted while status was '${prevStatus}'). You can re-run an agent to continue.`;
           task.updated_at = storage.nowIso();
           await storage.writeJson(taskPath, task);
-          console.log(`[startup] Marked task ${taskId} as interrupted (was '${prevStatus}' at last shutdown)`);
+          console.log(`[startup] Marked task ${taskId} as error/interrupted (was '${prevStatus}' at last shutdown)`);
         }
       }
     }

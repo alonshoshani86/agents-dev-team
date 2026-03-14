@@ -27,6 +27,7 @@ export interface Task {
   branch_name?: string | null;
   total_cost_usd?: number;
   agent_costs?: Record<string, number>;
+  error_message?: string;
 }
 
 export interface Agent {
