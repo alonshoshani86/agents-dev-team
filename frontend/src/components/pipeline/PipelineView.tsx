@@ -240,6 +240,7 @@ export function PipelineView() {
     } catch (err) {
       console.error("Failed to ask agent:", err);
       useStore.getState().setAskingAgent(false);
+      useStore.getState().addAgentSystemMessage(agent, "⚠ Failed to send message. Please try again.");
     } finally {
       setSending(false);
     }
@@ -454,17 +455,6 @@ export function PipelineView() {
             </div>
           ))}
 
-          {/* Thinking indicator when asking agent */}
-          {askingAgent && !activeTerminal?.streaming && (
-            <div className="terminal-thinking">
-              <span className="thinking-dots">
-                <span className="dot-1" />
-                <span className="dot-2" />
-                <span className="dot-3" />
-              </span>
-              <span className="thinking-text">Agent is thinking...</span>
-            </div>
-          )}
         </div>
 
         {/* Run Agent / Choose Next Agent bar */}
