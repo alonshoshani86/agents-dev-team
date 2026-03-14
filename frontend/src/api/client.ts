@@ -107,6 +107,16 @@ export const api = {
       method: "PUT",
       body: JSON.stringify({ content }),
     }),
+  artifactContent: (projectId: string, taskId: string, artifactType: string, run?: number | "latest") => {
+    const runParam = run !== undefined ? `?run=${run}` : "";
+    return request<{ artifact_type: string; run: string | null; content: string }>(
+      `/projects/${projectId}/tasks/${taskId}/artifacts/${artifactType}/content${runParam}`
+    );
+  },
+  artifactRuns: (projectId: string, taskId: string, artifactType: string) =>
+    request<{ artifact_type: string; run_count: number; runs: { run: number; agent: string; timestamp: string }[] }>(
+      `/projects/${projectId}/tasks/${taskId}/artifacts/${artifactType}/runs`
+    ),
   taskTerminals: (projectId: string, taskId: string) =>
     request<Record<string, { role: string; content: string }[]>>(`/projects/${projectId}/tasks/${taskId}/terminals`),
   respondPermission: (projectId: string, taskId: string, permissionId: string, behavior: "allow" | "deny", message?: string) =>
