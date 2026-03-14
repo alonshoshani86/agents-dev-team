@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { useStore } from "../../stores/useStore";
 import { api } from "../../api/client";
 import { FolderPicker } from "./FolderPicker";
+import { CleanupPanel } from "./CleanupPanel";
 
 interface PathEntry {
   label: string;
@@ -145,6 +146,10 @@ export function ProjectSettings() {
           onClose={() => setBrowsingIndex(null)}
         />
       )}
+
+      <hr style={{ margin: "32px 0", border: "none", borderTop: "1px solid var(--border)" }} />
+
+      <CleanupPanel projectId={activeProjectId!} />
     </div>
   );
 }

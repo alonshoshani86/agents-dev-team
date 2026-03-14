@@ -69,3 +69,39 @@ export interface FileNode {
   size?: number;
   children?: FileNode[];
 }
+
+// ── Cleanup ──────────────────────────────────────────────────────────────────
+
+export type FileCategory = "tasks" | "pipelines" | "files";
+export type FileCertainty = "safe" | "uncertain";
+
+export interface UnusedFile {
+  path: string;
+  abs_path: string;
+  size_bytes: number;
+  last_modified: string;
+  reason: string;
+  category: FileCategory;
+  certainty: FileCertainty;
+}
+
+export interface CleanupScanResult {
+  scan_id: string;
+  scanned_at: string;
+  categories: {
+    tasks: UnusedFile[];
+    pipelines: UnusedFile[];
+    files: UnusedFile[];
+  };
+  summary: {
+    total_files: number;
+    total_size_bytes: number;
+  };
+}
+
+export interface CleanupDeleteResult {
+  deleted: string[];
+  failed: Array<{ path: string; error: string }>;
+  bytes_freed: number;
+  empty_dirs_removed: number;
+}
