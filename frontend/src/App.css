@@ -450,70 +450,172 @@ body {
 
 /* Folder Picker Modal */
 .folder-picker {
-  width: 500px;
-  max-height: 70vh;
+  width: 520px;
+  max-height: 75vh;
   display: flex;
   flex-direction: column;
 }
 
-.folder-picker-path {
+/* Selected-path bar */
+.fp-selected-bar {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
   background: var(--bg-tertiary);
   border: 1px solid var(--border);
   border-radius: 6px;
   padding: 8px 12px;
+  margin-bottom: 10px;
+}
+
+.fp-selected-label {
+  font-size: 11px;
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.fp-selected-path {
   font-size: 12px;
-  font-family: monospace;
+  font-family: "SF Mono", "Fira Code", monospace;
   color: var(--text-secondary);
   word-break: break-all;
-  margin-bottom: 8px;
 }
 
-.folder-picker-actions-top {
-  margin-bottom: 8px;
-}
-
-.folder-picker-list {
+/* Tree container */
+.fp-tree {
   flex: 1;
   overflow-y: auto;
   border: 1px solid var(--border);
   border-radius: 6px;
-  max-height: 300px;
+  max-height: 340px;
   margin-bottom: 16px;
+  padding: 4px 0;
 }
 
-.folder-picker-item {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  width: 100%;
-  padding: 8px 12px;
-  background: none;
-  border: none;
-  border-bottom: 1px solid var(--border);
-  color: var(--text-primary);
-  cursor: pointer;
-  font-size: 13px;
-  text-align: left;
-}
-
-.folder-picker-item:last-child {
-  border-bottom: none;
-}
-
-.folder-picker-item:hover {
-  background: var(--bg-tertiary);
-}
-
-.folder-icon {
-  font-size: 16px;
-}
-
-.folder-picker-loading,
-.folder-picker-empty {
+/* Status messages (loading / error / empty) */
+.fp-status {
   padding: 24px;
   text-align: center;
   color: var(--text-muted);
   font-size: 13px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+}
+
+.fp-status--error {
+  color: var(--error);
+}
+
+/* Individual tree node */
+.fp-node {
+  display: flex;
+  flex-direction: column;
+}
+
+/* Row = chevron + name */
+.fp-row {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 1px 8px 1px 0;
+  border-radius: 4px;
+  transition: background 0.1s;
+}
+
+.fp-row:hover {
+  background: var(--bg-tertiary);
+}
+
+.fp-row--selected {
+  background: rgba(99, 102, 241, 0.15);
+}
+
+.fp-row--selected:hover {
+  background: rgba(99, 102, 241, 0.2);
+}
+
+/* Chevron button */
+.fp-chevron-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 4px 6px;
+  color: var(--text-muted);
+  font-size: 13px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  border-radius: 3px;
+  transition: color 0.1s;
+}
+
+.fp-chevron-btn:hover:not(:disabled) {
+  color: var(--text-primary);
+  background: var(--bg-tertiary);
+}
+
+.fp-chevron-btn:disabled {
+  cursor: default;
+}
+
+.fp-chevron {
+  font-style: normal;
+}
+
+.fp-loading {
+  color: var(--text-muted);
+  animation: fp-pulse 1s infinite;
+}
+
+@keyframes fp-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+.fp-error {
+  color: var(--error);
+}
+
+.fp-empty {
+  color: var(--text-muted);
+}
+
+/* Folder name button */
+.fp-name-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--text-primary);
+  text-align: left;
+  padding: 4px 6px 4px 2px;
+  flex: 1;
+  border-radius: 3px;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.fp-name-btn:hover {
+  color: var(--accent-hover);
+}
+
+.fp-folder-icon {
+  font-size: 14px;
+  flex-shrink: 0;
+}
+
+/* Children indented beneath parent */
+.fp-children {
+  display: flex;
+  flex-direction: column;
 }
 
 /* Agent list in sidebar */

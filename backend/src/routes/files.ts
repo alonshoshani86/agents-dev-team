@@ -10,22 +10,27 @@ import type { FastifyInstance } from "fastify";
 
 async function getAllowedRoots(): Promise<string[]> {
   // Always allow the data/ directory and the user's home directory
-  // (home dir is needed for the FolderPicker "browse from root" use case)
   const roots: string[] = [path.resolve(storage.DATA_DIR), os.homedir()];
 
-  // Allow any project's repo_path from their project.json
-  const projectDirs = await storage.listDirs(storage.projectsDir());
-  for (const projectId of projectDirs) {
-    const projectData = await storage.readJson<Record<string, unknown>>(
-      storage.projectJsonPath(projectId),
-    );
-    if (!projectData) continue;
-    const paths = (projectData.paths as Array<{ path?: string }>) ?? [];
-    for (const p of paths) {
-      if (p.path && existsSync(p.path) && statSync(p.path).isDirectory()) {
-        roots.push(path.resolve(p.path));
+  try {
+    const projectDirs = await storage.listDirs(storage.projectsDir());
+    for (const projectId of projectDirs) {
+      try {
+        const projectData = await storage.readJson<Record<string, unknown>>(
+          storage.projectJsonPath(projectId),
+        );
+        if (!projectData) continue;
+        // project.json stores a single string at repo_path (not an array)
+        const repoPath = projectData.repo_path as string | undefined;
+        if (repoPath && existsSync(repoPath) && statSync(repoPath).isDirectory()) {
+          roots.push(path.resolve(repoPath));
+        }
+      } catch {
+        // Skip any project whose metadata can't be read
       }
     }
+  } catch {
+    // projects/ dir doesn't exist yet (fresh install) — that's fine, defaults above suffice
   }
 
   return roots;
