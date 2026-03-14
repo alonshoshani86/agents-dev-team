@@ -488,7 +488,8 @@ export const useStore = create<AppState>((set, get) => ({
           ? {
               ...t,
               total_cost_usd: totalCostUSD,
-              agent_costs: { ...(t.agent_costs ?? {}), [agentName]: agentCostUSD },
+              // Accumulate — same agent can run more than once (e.g. Dev re-run after Test failures)
+              agent_costs: { ...(t.agent_costs ?? {}), [agentName]: (t.agent_costs?.[agentName] ?? 0) + agentCostUSD },
             }
           : t
       ),
