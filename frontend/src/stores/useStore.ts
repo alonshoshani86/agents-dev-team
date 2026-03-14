@@ -97,6 +97,7 @@ interface AppState {
   setContextUsage: (agent: string, usage: ContextUsage) => void;
   clearContextUsage: () => void;
   clearAgentTerminals: () => void;
+  updateTaskTotalCost: (taskId: string, totalCostUSD: number) => void;
   // Update terminals for a specific task (routes to active or cache)
   _updateTaskTerminals: (taskId: string, updater: (snapshot: TaskTerminalSnapshot) => Partial<TaskTerminalSnapshot>) => void;
 }
@@ -471,6 +472,13 @@ export const useStore = create<AppState>((set, get) => ({
   })),
 
   clearContextUsage: () => set({ contextUsage: {} }),
+
+  updateTaskTotalCost: (taskId, totalCostUSD) =>
+    set((s) => ({
+      tasks: s.tasks.map((t) =>
+        t.id === taskId ? { ...t, total_cost_usd: totalCostUSD } : t
+      ),
+    })),
 
   clearAgentTerminals: () => set({
     agentTerminals: {},

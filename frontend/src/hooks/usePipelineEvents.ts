@@ -452,6 +452,10 @@ export function usePipelineEvents(projectId: string | null) {
               agent,
             });
           }
+          // When final, persist the accumulated total cost to the task
+          if (data.final && taskId && data.totalCostUSD !== undefined) {
+            store.updateTaskTotalCost(taskId as string, data.totalCostUSD as number);
+          }
           break;
         }
 

@@ -243,6 +243,17 @@ export function PipelineView() {
           {task.branch_name && (
             <span className="pipeline-branch-badge">&#9741; {task.branch_name}</span>
           )}
+          {typeof task.total_cost_usd === "number" && task.total_cost_usd > 0 && (
+            <span style={{
+              fontSize: 12,
+              background: "var(--bg-tertiary)",
+              borderRadius: 4,
+              padding: "2px 8px",
+              color: "var(--text-muted)",
+            }}>
+              Total cost: <strong>${task.total_cost_usd.toFixed(4)}</strong>
+            </span>
+          )}
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
           <div className="view-mode-toggle">

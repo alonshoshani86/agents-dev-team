@@ -25,6 +25,7 @@ export interface Task {
   created_at: string;
   worktree_path?: string | null;
   branch_name?: string | null;
+  total_cost_usd?: number;
 }
 
 export interface Agent {

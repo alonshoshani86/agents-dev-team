@@ -128,6 +128,11 @@ export function Sidebar() {
                   <span style={{ display: "flex", alignItems: "center", gap: 4 }}>
                     <span style={{ fontSize: 11, color: "var(--text-muted)", fontWeight: 500 }}>{task.name || task.title}</span>
                     <span className="task-item-status">{STATUS_LABELS[task.status] || task.status}</span>
+                    {task.total_cost_usd != null && task.total_cost_usd > 0 && (
+                      <span style={{ fontSize: 10, color: "var(--text-muted)", marginLeft: 4 }}>
+                        ${task.total_cost_usd.toFixed(4)}
+                      </span>
+                    )}
                   </span>
                 </span>
                 <button
