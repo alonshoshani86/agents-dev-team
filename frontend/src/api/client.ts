@@ -124,7 +124,7 @@ export const api = {
 
   // Files / Browse
   browseDirs: (path?: string) =>
-    request<{ path: string; parent: string | null; dirs: { name: string; path: string }[] }>(
+    request<{ path: string; parent: string | null; dirs: { name: string; path: string }[]; error?: string }>(
       `/browse${path ? `?path=${encodeURIComponent(path)}` : ""}`
     ),
 

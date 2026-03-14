@@ -82,10 +82,18 @@ export function FolderPicker({ initialPath, onSelect, onClose }: Props) {
 
     try {
       const result = await api.browseDirs(dir.path);
-      setNodeStates((prev) => ({
-        ...prev,
-        [dir.path]: { expanded: true, loading: false, children: result.dirs, error: false },
-      }));
+      // Backend may return HTTP 200 with an error field (e.g. "Permission denied")
+      if (result.error) {
+        setNodeStates((prev) => ({
+          ...prev,
+          [dir.path]: { expanded: false, loading: false, children: null, error: true },
+        }));
+      } else {
+        setNodeStates((prev) => ({
+          ...prev,
+          [dir.path]: { expanded: true, loading: false, children: result.dirs, error: false },
+        }));
+      }
     } catch {
       setNodeStates((prev) => ({
         ...prev,
