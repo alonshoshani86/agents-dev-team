@@ -8,6 +8,7 @@ import type { AgentTerminalMessage, AgentTerminalState } from "../../stores/useS
 import { api } from "../../api/client";
 import { ArtifactPanel } from "./ArtifactPanel";
 import { PermissionModal } from "./PermissionModal";
+import { CostBreakdownPanel } from "./CostBreakdownPanel";
 
 const PIPELINE_AGENTS = [
   { name: "product", display: "Product" },
@@ -44,8 +45,9 @@ export function PipelineView() {
     return unsub;
   }, []);
 
-  // Read terminals directly from store (after force update)
+  // Read terminals and usage directly from store (after force update)
   const agentTerminals = useStore.getState().agentTerminals;
+  const contextUsage = useStore.getState().contextUsage;
 
   const task = tasks.find((t) => t.id === activeTaskId);
   const activeTerminal: AgentTerminalState | null = pipelineAgentTab
@@ -296,8 +298,14 @@ export function PipelineView() {
         </div>
       </div>
 
-      {/* Context usage bar */}
+      {/* Context usage bar + cost breakdown */}
       <ContextBar />
+      <CostBreakdownPanel
+        liveUsage={contextUsage}
+        persistedAgentCosts={task.agent_costs}
+        totalCostUSD={task.total_cost_usd ?? 0}
+        className="context-bar"
+      />
 
       {/* Artifacts view */}
       {viewMode === "artifacts" && activeProjectId && (
