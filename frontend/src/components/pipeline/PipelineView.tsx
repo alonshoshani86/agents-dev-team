@@ -75,9 +75,13 @@ export function PipelineView() {
         await new Promise((r) => setTimeout(r, 500));
       }
       const pipelineId = task.pipeline_id || "full-feature";
-      useStore.getState().clearAgentTerminals();
-      useStore.getState().initAgentTerminals(PIPELINE_AGENTS.map((a) => a.name));
-      useStore.getState().clearContextUsage();
+      const store = useStore.getState();
+      store.clearAgentTerminals();
+      store.initAgentTerminals(PIPELINE_AGENTS.map((a) => a.name));
+      store.clearContextUsage();
+      store.setPipelineWaitingInput(false);
+      store.setPipelineChoosingAgent(false);
+      store.setAskingAgent(false);
       await api.runTaskPipeline(activeProjectId, activeTaskId, pipelineId);
     } catch (err) {
       console.error("Failed to restart task:", err);
@@ -173,6 +177,11 @@ export function PipelineView() {
 
   function handleSubmitInput() {
     if (!userInput.trim()) return;
+    // When pipeline is waiting for input, Send resumes the pipeline
+    if (pipelineWaitingInput || task?.status === "waiting_input") {
+      handleSendInput();
+      return;
+    }
     // When run bar is visible, try to detect agent routing intent
     if (showRunBar) {
       const detectedAgent = detectAgentFromInput(userInput);
@@ -450,8 +459,8 @@ export function PipelineView() {
           </div>
         )}
 
-        {/* Input area — visible when pipeline is paused (waiting_input, choosing_agent, or completed) */}
-        {(pipelineWaitingInput || pipelineChoosingAgent || task.status === "completed" || task.status === "choosing_agent" || task.status === "waiting_input" || task.status === "cancelled" || task.status === "error") && (
+        {/* Input area — always visible when a task exists */}
+        {task && (
           <div className="terminal-input-area">
             <span className="terminal-input-prompt">&gt;</span>
             <textarea

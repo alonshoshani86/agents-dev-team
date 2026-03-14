@@ -16,6 +16,7 @@ logger = logging.getLogger(__name__)
 from orchestrator.models import (
     append_history, create_artifact, list_artifacts,
     append_terminal_message, update_last_terminal_message,
+    clear_agent_terminal,
 )
 from orchestrator.pipelines import get_pipeline
 
@@ -104,18 +105,6 @@ async def start_pipeline(
     on_event: Optional[EventCallback] = None,
 ) -> None:
     """Start executing a task through a pipeline."""
-    # Prevent parallel agent execution in the same project (Claude Code SDK limitation)
-    blocker = _has_active_agent(project_id, exclude_task_id=task_id)
-    if blocker:
-        if on_event:
-            await on_event({
-                "type": "task_error",
-                "task_id": task_id,
-                "message": f"Another task is actively running an agent. Wait for it to finish or stop it first.",
-            })
-        _update_task(project_id, task_id, {"status": "error"})
-        return
-
     pipeline = get_pipeline(project_id, pipeline_id)
     if not pipeline:
         if on_event:
@@ -244,6 +233,9 @@ async def _execute_agent(
             "step_name": agent_name,
             "iteration": execution.iteration,
         })
+
+    # Clear previous terminal messages for this agent before starting fresh
+    clear_agent_terminal(execution.project_id, execution.task_id, agent_name)
 
     # Save "starting" system message to terminal log
     agent_display = {"product": "Product", "architect": "Architect", "dev": "Dev", "test": "Test", "uxui": "UX/UI"}.get(agent_name, agent_name)
@@ -679,18 +671,6 @@ async def run_single_agent(
     """
     import logging
     logger = logging.getLogger(__name__)
-
-    # Prevent parallel agent execution in the same project
-    blocker = _has_active_agent(project_id, exclude_task_id=task_id)
-    if blocker:
-        if on_event:
-            await on_event({
-                "type": "task_error",
-                "task_id": task_id,
-                "message": f"Another task is actively running an agent. Wait for it to finish or stop it first.",
-            })
-        _update_task(project_id, task_id, {"status": "error"})
-        return
 
     # Create a minimal pipeline execution
     pipeline = {"name": "manual", "start_agent": agent_name}

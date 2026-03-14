@@ -226,9 +226,12 @@ body {
 
 .status-dot.idle { background: var(--text-muted); }
 .status-dot.working { background: var(--working); animation: pulse 1.5s infinite; }
+.status-dot.ready { background: #a78bfa; }
+.status-dot.input { background: #fb923c; animation: pulse 1.5s infinite; }
 .status-dot.done { background: var(--success); }
 .status-dot.error { background: var(--error); }
 .status-dot.pending { background: var(--text-muted); opacity: 0.5; }
+.status-dot.cancelled { background: var(--text-muted); }
 
 @keyframes pulse {
   0%, 100% { opacity: 1; }

@@ -136,6 +136,13 @@ def load_terminals(project_id: str, task_id: str) -> Dict[str, List[dict]]:
     return storage.read_json(_terminals_path(project_id, task_id)) or {}
 
 
+def clear_agent_terminal(project_id: str, task_id: str, agent: str) -> None:
+    """Clear all terminal messages for a specific agent."""
+    terminals = load_terminals(project_id, task_id)
+    terminals[agent] = []
+    save_terminals(project_id, task_id, terminals)
+
+
 def append_terminal_message(
     project_id: str, task_id: str, agent: str, role: str, content: str
 ) -> None:

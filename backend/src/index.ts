@@ -3,6 +3,14 @@
  * Replaces main.py (FastAPI) with Fastify.
  */
 
+// Ensure /usr/local/bin and /opt/homebrew/bin are in PATH for child processes (npx, node, claude)
+const extraPaths = ["/usr/local/bin", "/opt/homebrew/bin"];
+const currentPath = process.env.PATH ?? "";
+const missingPaths = extraPaths.filter((p) => !currentPath.includes(p));
+if (missingPaths.length > 0) {
+  process.env.PATH = [...missingPaths, currentPath].join(":");
+}
+
 import Fastify from "fastify";
 import fastifyCors from "@fastify/cors";
 import fastifyWebSocket from "@fastify/websocket";
@@ -16,7 +24,7 @@ import { registerFileRoutes } from "./routes/files.js";
 import { registerWebSocketRoutes, broadcast } from "./routes/websocket.js";
 import * as storage from "./storage.js";
 
-const PORT = parseInt(process.env.PORT ?? "8000", 10);
+const PORT = parseInt(process.env.PORT ?? "8001", 10);
 
 /**
  * On startup, mark any tasks that were left in "running" state as "interrupted".
@@ -34,7 +42,8 @@ async function recoverInterruptedTasks(): Promise<void> {
         const interruptibleStates = ["running", "choosing_agent", "waiting_input"];
         const prevStatus = String(task?.status ?? "");
         if (task && interruptibleStates.includes(prevStatus)) {
-          task.status = "interrupted";
+          task.status = "choosing_agent";
+          task.paused = false;
           task.updated_at = storage.nowIso();
           await storage.writeJson(taskPath, task);
           console.log(`[startup] Marked task ${taskId} as interrupted (was '${prevStatus}' at last shutdown)`);

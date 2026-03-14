@@ -154,6 +154,16 @@ export async function loadTerminals(
   );
 }
 
+export async function clearAgentTerminal(
+  projectId: string,
+  taskId: string,
+  agent: string,
+): Promise<void> {
+  const terminals = await loadTerminals(projectId, taskId);
+  terminals[agent] = [];
+  await saveTerminals(projectId, taskId, terminals);
+}
+
 export async function appendTerminalMessage(
   projectId: string,
   taskId: string,

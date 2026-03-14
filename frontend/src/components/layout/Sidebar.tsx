@@ -13,6 +13,8 @@ const AGENTS = [
 const STATUS_LABELS: Record<string, string> = {
   pending: "Pending",
   running: "Running",
+  choosing_agent: "Ready",
+  waiting_input: "Needs Input",
   paused: "Paused",
   completed: "Done",
   cancelled: "Cancelled",
@@ -76,6 +78,9 @@ export function Sidebar() {
   function statusDotClass(status: string): string {
     switch (status) {
       case "running": return "working";
+      case "choosing_agent": return "ready";
+      case "waiting_input": return "input";
+      case "cancelled": return "cancelled";
       case "completed": return "done";
       case "error": return "error";
       case "paused": return "working";

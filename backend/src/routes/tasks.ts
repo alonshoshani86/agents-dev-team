@@ -5,6 +5,7 @@
 import path from "path";
 import * as storage from "../storage.js";
 import * as engine from "../orchestrator/engine.js";
+import * as wt from "../worktree.js";
 import { listPipelines, getPipeline } from "../orchestrator/pipelines.js";
 import { listArtifacts, updateArtifactContent, getHistory, loadTerminals } from "../orchestrator/models.js";
 import { AGENT_NAMES } from "../agents/registry.js";
@@ -129,6 +130,18 @@ export async function registerTaskRoutes(
       );
       const { existsSync } = await import("fs");
       if (!existsSync(taskDir)) return reply.code(404).send({ detail: "Task not found" });
+
+      // Clean up git worktree if one was created for this task
+      const task = await storage.readJson<Record<string, unknown>>(
+        path.join(taskDir, "task.json"),
+      );
+      if (task?.worktree_path) {
+        const repoPath = storage.getRepoPath(req.params.projectId);
+        if (repoPath) {
+          await wt.removeWorktree(repoPath, req.params.taskId);
+        }
+      }
+
       await storage.deletePath(taskDir);
       return { deleted: true };
     },
@@ -184,10 +197,14 @@ export async function registerTaskRoutes(
   app.post<{ Params: { projectId: string; taskId: string } }>(
     "/projects/:projectId/tasks/:taskId/resume",
     async (req, reply) => {
-      const taskExists = await getTask(req.params.projectId, req.params.taskId);
-      if (!taskExists) return reply.code(404).send({ detail: "Task not found" });
+      const task = await getTask(req.params.projectId, req.params.taskId);
+      if (!task) return reply.code(404).send({ detail: "Task not found" });
       if (!engine.resumeTask(req.params.taskId)) {
-        return reply.code(400).send({ detail: "Task not paused" });
+        // Task not in memory (e.g. after server restart) — update status on disk
+        task.status = "choosing_agent";
+        task.paused = false;
+        task.updated_at = storage.nowIso();
+        await storage.writeJson(taskPath(req.params.projectId, req.params.taskId), task);
       }
       await broadcast(req.params.projectId, {
         type: "task_resumed",
@@ -229,17 +246,37 @@ export async function registerTaskRoutes(
     Params: { projectId: string; taskId: string };
     Body: { agent?: string | null };
   }>("/projects/:projectId/tasks/:taskId/next-agent", async (req, reply) => {
-    const taskExists = await getTask(req.params.projectId, req.params.taskId);
-    if (!taskExists) return reply.code(404).send({ detail: "Task not found" });
-    if (!engine.setNextAgent(req.params.taskId, req.body.agent ?? null)) {
-      return reply.code(400).send({ detail: "Task not awaiting agent selection" });
+    const task = await getTask(req.params.projectId, req.params.taskId);
+    if (!task) return reply.code(404).send({ detail: "Task not found" });
+
+    const { projectId, taskId } = req.params;
+    const agent = req.body.agent ?? null;
+
+    if (engine.setNextAgent(taskId, agent)) {
+      // Task was in memory — pipeline loop continues
+      await broadcast(projectId, { type: "next_agent_chosen", task_id: taskId, agent });
+      return { status: "ok", next_agent: agent };
     }
-    await broadcast(req.params.projectId, {
-      type: "next_agent_chosen",
-      task_id: req.params.taskId,
-      agent: req.body.agent,
+
+    // Task not in memory (e.g. after server restart) — handle gracefully
+    if (agent === null) {
+      // User chose "Finish" — mark as completed
+      task.status = "completed";
+      task.paused = false;
+      task.updated_at = storage.nowIso();
+      await storage.writeJson(taskPath(projectId, taskId), task);
+      await broadcast(projectId, { type: "task_completed", task_id: taskId });
+      return { status: "ok", next_agent: null };
+    }
+
+    // User chose an agent — start a fresh single-agent run
+    setImmediate(() => {
+      engine
+        .runSingleAgent(projectId, taskId, agent, null, (event) => broadcast(projectId, event))
+        .catch(console.error);
     });
-    return { status: "ok", next_agent: req.body.agent };
+    await broadcast(projectId, { type: "next_agent_chosen", task_id: taskId, agent });
+    return { status: "ok", next_agent: agent };
   });
 
   // POST /projects/:projectId/tasks/:taskId/run-agent

@@ -28,8 +28,18 @@ app.include_router(ws_router, tags=["websocket"])
 
 @app.on_event("startup")
 async def cleanup_stale_tasks():
-    """Reset tasks stuck in 'running' status from a previous server session."""
+    """Reset tasks stuck in active statuses from a previous server session.
+
+    After a restart, no task has an in-memory execution, so 'running' and
+    'waiting_input' are stale.  We reset them to 'choosing_agent' so the
+    user can pick up where they left off instead of seeing a broken state.
+    """
+    import logging
     import storage
+
+    logger = logging.getLogger(__name__)
+    stale_statuses = {"running", "waiting_input"}
+
     projects_dir = storage.projects_dir()
     if not projects_dir.exists():
         return
@@ -42,10 +52,13 @@ async def cleanup_stale_tasks():
         for task_dir in tasks_dir.iterdir():
             task_file = task_dir / "task.json"
             task = storage.read_json(task_file)
-            if task and task.get("status") == "running":
-                task["status"] = "error"
+            if task and task.get("status") in stale_statuses:
+                old = task["status"]
+                task["status"] = "choosing_agent"
+                task["paused"] = False
                 task["updated_at"] = storage.now_iso()
                 storage.write_json(task_file, task)
+                logger.info("Startup cleanup: task %s reset from '%s' → 'choosing_agent'", task.get("id"), old)
 
 
 @app.get("/health")

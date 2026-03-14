@@ -3,15 +3,18 @@
  * Replaces orchestrator/engine.py. Uses Promise-based latches instead of asyncio.
  */
 
+import fs from "fs";
 import path from "path";
 import * as storage from "../storage.js";
 import { createRunner } from "../agents/registry.js";
+import * as worktree from "../worktree.js";
 import {
   appendHistory,
   createArtifact,
   listArtifacts,
   appendTerminalMessage,
   updateLastTerminalMessage,
+  clearAgentTerminal,
 } from "./models.js";
 import { getPipeline } from "./pipelines.js";
 import type { Pipeline } from "./pipelines.js";
@@ -86,6 +89,7 @@ export class TaskExecution {
   cancelled = false;
   extraContext: string | null = null;
   nextAgentChoice: string | null | undefined = undefined; // undefined = not yet chosen
+  worktreePath: string | null = null;
 
   private _pauseLatch = new PauseLatch();
   private _currentRunner: AgentRunner | null = null;
@@ -176,6 +180,18 @@ function hasActiveAgent(projectId: string, excludeTaskId?: string): string | nul
   return null;
 }
 
+async function setupWorktree(projectId: string, taskId: string): Promise<[string | null, string | null]> {
+  const repoPath = storage.getRepoPath(projectId);
+  if (!repoPath || !worktree.isGitRepo(repoPath)) return [null, null];
+  const [success, result, branch] = await worktree.createWorktree(repoPath, taskId);
+  if (success) {
+    console.log(`[engine] Task ${taskId} worktree ready: ${result} (branch: ${branch})`);
+    return [result, branch];
+  }
+  console.warn(`[engine] Worktree creation failed for task ${taskId}: ${result}`);
+  return [null, null];
+}
+
 function updateTask(projectId: string, taskId: string, updates: Record<string, unknown>): Promise<void> {
   const taskPath = path.join(storage.projectTasksDir(projectId), taskId, "task.json");
   return storage.readJson<Record<string, unknown>>(taskPath).then((task) => {
@@ -227,7 +243,7 @@ async function executeAgent(
   agentName: string,
   onEvent: EventCallback | null,
 ): Promise<[string | null, string | null]> {
-  updateTask(execution.projectId, execution.taskId, {
+  await updateTask(execution.projectId, execution.taskId, {
     current_agent: agentName,
     iteration: execution.iteration,
   });
@@ -241,6 +257,9 @@ async function executeAgent(
       iteration: execution.iteration,
     });
   }
+
+  // Clear previous terminal messages for this agent before starting fresh
+  await clearAgentTerminal(execution.projectId, execution.taskId, agentName);
 
   const agentDisplay = AGENT_DISPLAY[agentName] ?? agentName;
   await appendTerminalMessage(
@@ -284,7 +303,7 @@ async function executeAgent(
     execution.extraContext = null;
   }
 
-  const runner = await createRunner(execution.projectId, agentName);
+  const runner = await createRunner(execution.projectId, agentName, execution.worktreePath);
   execution.setRunner(runner);
   let fullResponse = "";
 
@@ -368,7 +387,7 @@ async function executeAgent(
 
   if (signal === "needs_input") {
     execution.pause();
-    updateTask(execution.projectId, execution.taskId, { status: "waiting_input", paused: true });
+    await updateTask(execution.projectId, execution.taskId, { status: "waiting_input", paused: true });
     await appendTerminalMessage(
       execution.projectId,
       execution.taskId,
@@ -460,7 +479,7 @@ async function executePipelineLoop(
     // After agent completes, pause and ask user which agent to run next
     execution.nextAgentChoice = undefined;
     execution.pause();
-    updateTask(execution.projectId, execution.taskId, {
+    await updateTask(execution.projectId, execution.taskId, {
       status: "choosing_agent",
       paused: true,
     });
@@ -482,10 +501,10 @@ async function executePipelineLoop(
   }
 
   if (execution.cancelled) {
-    updateTask(execution.projectId, execution.taskId, { status: "cancelled" });
+    await updateTask(execution.projectId, execution.taskId, { status: "cancelled" });
     if (onEvent) await onEvent({ type: "task_cancelled", task_id: execution.taskId });
   } else {
-    updateTask(execution.projectId, execution.taskId, { status: "completed" });
+    await updateTask(execution.projectId, execution.taskId, { status: "completed" });
     if (onEvent) await onEvent({ type: "task_completed", task_id: execution.taskId });
   }
 }
@@ -498,19 +517,6 @@ export async function startPipeline(
   pipelineId: string,
   onEvent: EventCallback | null = null,
 ): Promise<void> {
-  const blocker = hasActiveAgent(projectId, taskId);
-  if (blocker) {
-    if (onEvent) {
-      await onEvent({
-        type: "task_error",
-        task_id: taskId,
-        message: "Another task is actively running an agent. Wait for it to finish or stop it first.",
-      });
-    }
-    updateTask(projectId, taskId, { status: "error" });
-    return;
-  }
-
   const pipeline = await getPipeline(projectId, pipelineId);
   if (!pipeline) {
     if (onEvent) await onEvent({ type: "error", task_id: taskId, message: `Pipeline not found: ${pipelineId}` });
@@ -518,9 +524,19 @@ export async function startPipeline(
   }
 
   const execution = new TaskExecution(projectId, taskId, pipeline);
+
+  // Create git worktree for task isolation
+  const [wtPath, branchName] = await setupWorktree(projectId, taskId);
+  execution.worktreePath = wtPath;
+
   runningTasks.set(taskId, execution);
 
-  updateTask(projectId, taskId, { status: "running", pipeline_id: pipelineId });
+  const taskUpdates: Record<string, unknown> = { status: "running", pipeline_id: pipelineId };
+  if (wtPath) {
+    taskUpdates.worktree_path = wtPath;
+    taskUpdates.branch_name = branchName;
+  }
+  await updateTask(projectId, taskId, taskUpdates);
 
   if (onEvent) {
     await onEvent({
@@ -533,7 +549,7 @@ export async function startPipeline(
   try {
     await executePipelineLoop(execution, execution.startAgent, onEvent);
   } catch (err) {
-    updateTask(projectId, taskId, { status: "error" });
+    await updateTask(projectId, taskId, { status: "error" });
     if (onEvent)
       await onEvent({ type: "task_error", task_id: taskId, message: String(err) });
   } finally {
@@ -639,7 +655,10 @@ export async function askAgent(
       await onEvent({ type: "ask_agent_started", task_id: taskId, agent: agentName });
     }
 
-    const runner = await createRunner(projectId, agentName);
+    // Use worktree path if available
+    const cwdOverride = taskData?.worktree_path as string | undefined;
+    const runner = await createRunner(projectId, agentName,
+      cwdOverride && fs.existsSync(cwdOverride) ? cwdOverride : undefined);
     let fullResponse = "";
 
     for await (const chunk of runner.stream(userMessage, context)) {
@@ -675,25 +694,28 @@ export async function runSingleAgent(
   extraContext: string | null = null,
   onEvent: EventCallback | null = null,
 ): Promise<void> {
-  const blocker = hasActiveAgent(projectId, taskId);
-  if (blocker) {
-    if (onEvent) {
-      await onEvent({
-        type: "task_error",
-        task_id: taskId,
-        message: "Another task is actively running an agent. Wait for it to finish or stop it first.",
-      });
-    }
-    updateTask(projectId, taskId, { status: "error" });
-    return;
-  }
-
   const pipeline = { id: "manual", name: "manual", start_agent: agentName };
   const execution = new TaskExecution(projectId, taskId, pipeline);
   execution.extraContext = extraContext;
+
+  // Reuse existing worktree or create one
+  const taskData = await storage.readJson<Record<string, unknown>>(
+    path.join(storage.projectTasksDir(projectId), taskId, "task.json"),
+  );
+  const existingWt = taskData?.worktree_path as string | undefined;
+  if (existingWt && fs.existsSync(existingWt)) {
+    execution.worktreePath = existingWt;
+  } else {
+    const [wtPath, branchName] = await setupWorktree(projectId, taskId);
+    execution.worktreePath = wtPath;
+    if (wtPath) {
+      updateTask(projectId, taskId, { worktree_path: wtPath, branch_name: branchName });
+    }
+  }
+
   runningTasks.set(taskId, execution);
 
-  updateTask(projectId, taskId, { status: "running", current_agent: agentName });
+  await updateTask(projectId, taskId, { status: "running", current_agent: agentName });
 
   if (onEvent) await onEvent({ type: "task_started", task_id: taskId, pipeline: "manual" });
 
@@ -701,7 +723,7 @@ export async function runSingleAgent(
     const [signal, suggestedAgent] = await executeAgent(execution, agentName, onEvent);
 
     if (execution.cancelled) {
-      updateTask(projectId, taskId, { status: "cancelled" });
+      await updateTask(projectId, taskId, { status: "cancelled" });
       if (onEvent) await onEvent({ type: "task_cancelled", task_id: taskId });
       return;
     }
@@ -711,7 +733,7 @@ export async function runSingleAgent(
     // Pause for user to choose next agent
     execution.nextAgentChoice = undefined;
     execution.pause();
-    updateTask(projectId, taskId, { status: "choosing_agent", paused: true });
+    await updateTask(projectId, taskId, { status: "choosing_agent", paused: true });
 
     if (onEvent) {
       await onEvent({
@@ -724,7 +746,7 @@ export async function runSingleAgent(
 
     await execution.waitIfPaused();
     if (execution.cancelled) {
-      updateTask(projectId, taskId, { status: "cancelled" });
+      await updateTask(projectId, taskId, { status: "cancelled" });
       if (onEvent) await onEvent({ type: "task_cancelled", task_id: taskId });
       return;
     }
@@ -733,11 +755,11 @@ export async function runSingleAgent(
     if (nextAgent) {
       await executePipelineLoop(execution, nextAgent, onEvent);
     } else {
-      updateTask(projectId, taskId, { status: "completed" });
+      await updateTask(projectId, taskId, { status: "completed" });
       if (onEvent) await onEvent({ type: "task_completed", task_id: taskId });
     }
   } catch (err) {
-    updateTask(projectId, taskId, { status: "error" });
+    await updateTask(projectId, taskId, { status: "error" });
     if (onEvent) await onEvent({ type: "task_error", task_id: taskId, message: String(err) });
   } finally {
     runningTasks.delete(taskId);

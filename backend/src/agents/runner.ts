@@ -83,6 +83,16 @@ function getModel(override?: string | null): string {
   return (config.default_model as string) ?? "claude-sonnet-4-6";
 }
 
+/** Ensure ANTHROPIC_API_KEY is set from config if the user provided one. */
+function ensureApiKey(): void {
+  if (process.env.ANTHROPIC_API_KEY) return;
+  const config = getConfig();
+  const key = config.anthropic_api_key as string | undefined;
+  if (key) {
+    process.env.ANTHROPIC_API_KEY = key;
+  }
+}
+
 export class AgentRunner {
   readonly name: string;
   readonly systemPrompt: string;
@@ -117,6 +127,7 @@ export class AgentRunner {
   ): AsyncGenerator<string> {
     this._cancelled = false;
     this._abortController = new AbortController();
+    ensureApiKey();
 
     const prompt = context
       ? `<context>\n${context}\n</context>\n\n${userMessage}`
@@ -179,6 +190,7 @@ export class AgentRunner {
   ): AsyncGenerator<string> {
     this._cancelled = false;
     this._abortController = new AbortController();
+    ensureApiKey();
 
     const prompt = opts.context
       ? `<context>\n${opts.context}\n</context>\n\n${userMessage}`
@@ -208,7 +220,7 @@ export class AgentRunner {
             const category = getToolCategory(toolName);
 
             if (autoApproveRead && category === "read") {
-              return { behavior: "allow" as const };
+              return { behavior: "allow" as const, updatedInput: input as Record<string, unknown> };
             }
 
             const id =
@@ -223,8 +235,10 @@ export class AgentRunner {
               summary,
             });
 
+            console.log(`[runner] Permission response for ${toolName} (${id}): ${response.behavior}${response.message ? ` - ${response.message}` : ""}`);
+
             if (response.behavior === "allow") {
-              return { behavior: "allow" as const };
+              return { behavior: "allow" as const, updatedInput: (input as Record<string, unknown>) };
             }
             return { behavior: "deny" as const, message: response.message ?? "Denied by user" };
           },

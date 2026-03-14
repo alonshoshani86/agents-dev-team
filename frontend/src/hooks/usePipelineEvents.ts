@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect } from "react";
 import { useStore } from "../stores/useStore";
 import type { AgentTerminalState } from "../stores/useStore";
 import { api } from "../api/client";
@@ -20,26 +20,31 @@ const EMPTY_TERMINAL: AgentTerminalState = {
 let chunkCount = 0;
 
 export function usePipelineEvents(projectId: string | null) {
-  const wsRef = useRef<WebSocket | null>(null);
-
   useEffect(() => {
+    console.log("[PipelineEvents] Hook called, projectId:", projectId);
     if (!projectId) return;
 
-    if (wsRef.current) {
-      wsRef.current.close();
-    }
+    let cancelled = false;
+    let ws: WebSocket | null = null;
+    let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
 
-    const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-    const url = `${protocol}//${window.location.host}/ws/projects/${projectId}/events`;
-    console.log("[PipelineEvents] Connecting to", url);
-    const ws = new WebSocket(url);
+    function connect() {
+      if (cancelled) return;
+      if (ws && ws.readyState <= 1) {
+        ws.close();
+      }
 
-    ws.onopen = () => {
-      console.log("[PipelineEvents] Connected");
-      chunkCount = 0;
-    };
+      const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+      const url = `${protocol}//${window.location.host}/ws/projects/${projectId}/events`;
+      console.log("[PipelineEvents] Connecting to", url);
+      const newWs = new WebSocket(url);
 
-    ws.onmessage = (event) => {
+      newWs.onopen = () => {
+        console.log("[PipelineEvents] Connected");
+        chunkCount = 0;
+      };
+
+    newWs.onmessage = (event) => {
       const data = JSON.parse(event.data);
       console.log("[PipelineEvents] RAW EVENT:", data.type, "agent:", data.agent, "content:", String(data.content || "").substring(0, 50));
       const store = useStore.getState();
@@ -57,6 +62,9 @@ export function usePipelineEvents(projectId: string | null) {
       switch (data.type) {
         case "task_started":
           store.clearContextUsage();
+          if (store.activeProjectId) {
+            store.fetchTasks(store.activeProjectId);
+          }
           break;
 
         case "step_started": {
@@ -77,6 +85,9 @@ export function usePipelineEvents(projectId: string | null) {
               pipelineAgentTab: agent,
             };
           });
+          if (store.activeProjectId) {
+            store.fetchTasks(store.activeProjectId);
+          }
           break;
         }
 
@@ -477,19 +488,27 @@ export function usePipelineEvents(projectId: string | null) {
       }
     };
 
-    ws.onerror = (e) => {
+    newWs.onerror = (e) => {
       console.error("[PipelineEvents] WebSocket error", e);
     };
 
-    ws.onclose = () => {
-      console.log("[PipelineEvents] Disconnected");
+    newWs.onclose = () => {
+      console.log("[PipelineEvents] Disconnected, cancelled:", cancelled);
+      if (!cancelled) {
+        console.log("[PipelineEvents] Reconnecting in 2s...");
+        reconnectTimer = setTimeout(connect, 2000);
+      }
     };
 
-    wsRef.current = ws;
+    ws = newWs;
+    } // end connect()
+
+    connect();
 
     return () => {
-      ws.close();
-      wsRef.current = null;
+      cancelled = true;
+      if (reconnectTimer) clearTimeout(reconnectTimer);
+      if (ws) ws.close();
     };
   }, [projectId]);
 }

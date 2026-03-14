@@ -62,6 +62,19 @@ export function PermissionModal({ projectId }: Props) {
     }
   }
 
+  // Auto-approve all queued permissions matching a category (or "all")
+  async function handleAutoApprove(category: string) {
+    setAutoApprove(category);
+    // Approve all currently pending permissions that match
+    const store = useStore.getState();
+    for (const perm of store.pendingPermissions) {
+      if (category === "all" || perm.category === category) {
+        api.respondPermission(projectId, perm.taskId, perm.id, "allow").catch(console.error);
+        removePermissionRequest(perm.id);
+      }
+    }
+  }
+
   const filePath = (toolInput.file_path as string) || "";
   const command = (toolInput.command as string) || "";
   const content = (toolInput.content as string) || "";
@@ -169,14 +182,14 @@ export function PermissionModal({ projectId }: Props) {
           <span className="permission-session-label">Auto-approve for this session:</span>
           <button
             className="permission-session-btn"
-            onClick={() => { setAutoApprove(current.category); handleRespond("allow"); }}
+            onClick={() => handleAutoApprove(current.category)}
             disabled={responding !== null}
           >
             All {CATEGORY_LABELS[current.category] || current.category}
           </button>
           <button
             className="permission-session-btn allow-all"
-            onClick={() => { setAutoApprove("all"); handleRespond("allow"); }}
+            onClick={() => handleAutoApprove("all")}
             disabled={responding !== null}
           >
             Allow Everything

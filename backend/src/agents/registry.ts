@@ -150,7 +150,7 @@ export async function saveAgentConfig(
   await storage.writeJson(filePath, overrides);
 }
 
-export async function createRunner(projectId: string, agentName: string): Promise<AgentRunner> {
+export async function createRunner(projectId: string, agentName: string, cwdOverride?: string | null): Promise<AgentRunner> {
   const config = await getAgentConfig(projectId, agentName);
 
   const projectData = await storage.readJson<Record<string, unknown>>(
@@ -206,9 +206,11 @@ export async function createRunner(projectId: string, agentName: string): Promis
     }
   }
 
-  // Determine working directory
+  // Determine working directory (cwdOverride takes precedence, e.g. worktree path)
   let cwd: string | null = null;
-  if (projectData) {
+  if (cwdOverride && existsSync(cwdOverride) && statSync(cwdOverride).isDirectory()) {
+    cwd = cwdOverride;
+  } else if (projectData) {
     let paths = (projectData.paths as Array<{ path?: string }>) ?? [];
     if (paths.length === 0 && projectData.repo_path) {
       paths = [{ path: String(projectData.repo_path) }];

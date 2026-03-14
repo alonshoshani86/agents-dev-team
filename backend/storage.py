@@ -203,6 +203,7 @@ def unique_task_slug(project_id: str, base_slug: str) -> str:
     tasks_dir = project_tasks_dir(project_id)
     counter = 2
     while (tasks_dir / slug).exists():
-        slug = f"{base_slug[:47]}-{counter}"
+        suffix = f"-{counter}"
+        slug = f"{base_slug[:50 - len(suffix)]}{suffix}"
         counter += 1
     return slug

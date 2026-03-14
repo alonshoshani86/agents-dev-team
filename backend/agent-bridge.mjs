@@ -111,7 +111,7 @@ async function main() {
 
         // Auto-approve read operations if configured
         if (autoApproveRead && category === "read") {
-          return { behavior: "allow" };
+          return { behavior: "allow", updatedInput: input };
         }
 
         // Send permission request to Python

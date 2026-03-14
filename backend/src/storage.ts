@@ -3,7 +3,7 @@
  */
 
 import fs from "fs/promises";
-import { existsSync, statSync } from "fs";
+import { existsSync, statSync, readFileSync } from "fs";
 import path from "path";
 import { randomBytes } from "crypto";
 import { fileURLToPath } from "url";
@@ -19,6 +19,21 @@ export function nowIso(): string {
   return new Date().toISOString();
 }
 
+// --- Per-file write lock to prevent concurrent writes ---
+
+const writeLocks = new Map<string, Promise<void>>();
+
+function withFileLock(filePath: string, fn: () => Promise<void>): Promise<void> {
+  const prev = writeLocks.get(filePath) ?? Promise.resolve();
+  const next = prev.then(fn, fn); // run fn after previous completes (even if it failed)
+  writeLocks.set(filePath, next);
+  // Clean up after completion to avoid memory leak
+  next.then(() => {
+    if (writeLocks.get(filePath) === next) writeLocks.delete(filePath);
+  });
+  return next;
+}
+
 // --- JSON file operations ---
 
 export async function readJson<T = unknown>(filePath: string): Promise<T | null> {
@@ -31,8 +46,14 @@ export async function readJson<T = unknown>(filePath: string): Promise<T | null>
 }
 
 export async function writeJson(filePath: string, data: unknown): Promise<void> {
-  await fs.mkdir(path.dirname(filePath), { recursive: true });
-  await fs.writeFile(filePath, JSON.stringify(data, null, 2), "utf-8");
+  return withFileLock(filePath, async () => {
+    const dir = path.dirname(filePath);
+    await fs.mkdir(dir, { recursive: true });
+    // Atomic write: write to temp file then rename
+    const tmpPath = filePath + `.tmp.${process.pid}.${Date.now()}`;
+    await fs.writeFile(tmpPath, JSON.stringify(data, null, 2), "utf-8");
+    await fs.rename(tmpPath, filePath);
+  });
 }
 
 export async function deletePath(targetPath: string): Promise<boolean> {
@@ -152,6 +173,24 @@ export function projectAgentsDir(projectId: string): string {
 
 export function projectPipelinesDir(projectId: string): string {
   return path.join(projectDir(projectId), "pipelines");
+}
+
+/** Get the first valid repo path for a project, or null. */
+export function getRepoPath(projectId: string): string | null {
+  const projPath = projectJsonPath(projectId);
+  try {
+    const raw = readFileSync(projPath, "utf-8");
+    const data = JSON.parse(raw) as Record<string, unknown>;
+    const paths = (data.paths as Array<{ path?: string }>) ?? [];
+    for (const pp of paths) {
+      if (pp.path && existsSync(pp.path) && statSync(pp.path).isDirectory()) {
+        return pp.path;
+      }
+    }
+  } catch {
+    // ignore
+  }
+  return null;
 }
 
 export async function projectFilesDir(projectId: string): Promise<string> {
