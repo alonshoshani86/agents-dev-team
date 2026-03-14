@@ -26,6 +26,7 @@ export interface Task {
   worktree_path?: string | null;
   branch_name?: string | null;
   total_cost_usd?: number;
+  agent_costs?: Record<string, number>;
 }
 
 export interface Agent {

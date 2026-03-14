@@ -326,6 +326,11 @@ async def _execute_agent(
                 if task_data is not None:
                     existing_total = task_data.get("total_cost_usd") or 0.0
                     total_cost_usd = existing_total + cost_usd
+                    # Persist per-agent cost breakdown alongside the total
+                    agent_costs = task_data.get("agent_costs", {})
+                    # Accumulate — same agent may run more than once (e.g. Dev re-run after Test failures)
+                    agent_costs[agent_name] = agent_costs.get(agent_name, 0.0) + cost_usd
+                    task_data["agent_costs"] = agent_costs
                     task_data["total_cost_usd"] = total_cost_usd
                     storage.write_json(task_path, task_data)
 

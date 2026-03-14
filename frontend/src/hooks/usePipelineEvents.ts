@@ -452,8 +452,15 @@ export function usePipelineEvents(projectId: string | null) {
               agent,
             });
           }
-          // When final, persist the accumulated total cost to the task
-          if (data.final && taskId && data.totalCostUSD !== undefined) {
+          // When final, persist the accumulated total + per-agent cost to the task
+          if (data.final && taskId && data.totalCostUSD !== undefined && agent) {
+            store.updateTaskCosts(
+              taskId as string,
+              agent,
+              data.costUSD as number || 0,
+              data.totalCostUSD as number
+            );
+          } else if (data.final && taskId && data.totalCostUSD !== undefined) {
             store.updateTaskTotalCost(taskId as string, data.totalCostUSD as number);
           }
           break;
@@ -463,6 +470,8 @@ export function usePipelineEvents(projectId: string | null) {
         case "task_error":
         case "task_cancelled":
           console.log("[PipelineEvents]", data.type);
+          // Clear live usage so "live" badges are removed
+          store.clearContextUsage();
           // Clear any pending permissions for this task
           useStore.setState((s) => ({
             pendingPermissions: s.pendingPermissions.filter((p) => p.taskId !== taskId),

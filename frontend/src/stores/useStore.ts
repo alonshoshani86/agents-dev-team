@@ -98,6 +98,7 @@ interface AppState {
   clearContextUsage: () => void;
   clearAgentTerminals: () => void;
   updateTaskTotalCost: (taskId: string, totalCostUSD: number) => void;
+  updateTaskCosts: (taskId: string, agentName: string, agentCostUSD: number, totalCostUSD: number) => void;
   // Update terminals for a specific task (routes to active or cache)
   _updateTaskTerminals: (taskId: string, updater: (snapshot: TaskTerminalSnapshot) => Partial<TaskTerminalSnapshot>) => void;
 }
@@ -477,6 +478,20 @@ export const useStore = create<AppState>((set, get) => ({
     set((s) => ({
       tasks: s.tasks.map((t) =>
         t.id === taskId ? { ...t, total_cost_usd: totalCostUSD } : t
+      ),
+    })),
+
+  updateTaskCosts: (taskId, agentName, agentCostUSD, totalCostUSD) =>
+    set((s) => ({
+      tasks: s.tasks.map((t) =>
+        t.id === taskId
+          ? {
+              ...t,
+              total_cost_usd: totalCostUSD,
+              // Accumulate — same agent can run more than once (e.g. Dev re-run after Test failures)
+              agent_costs: { ...(t.agent_costs ?? {}), [agentName]: (t.agent_costs?.[agentName] ?? 0) + agentCostUSD },
+            }
+          : t
       ),
     })),
 
