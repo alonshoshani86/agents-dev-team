@@ -45,6 +45,17 @@ export function TopBar() {
       >
         &#9881;
       </button>
+      <button
+        className="topbar-settings-btn"
+        onClick={async () => {
+          await api.logout();
+          window.location.reload();
+        }}
+        title="Sign out"
+        style={{ fontSize: 13 }}
+      >
+        &#x23FB;
+      </button>
     </div>
   );
 }
