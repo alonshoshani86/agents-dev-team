@@ -43,6 +43,8 @@ export const api = {
     request<{ valid: boolean; error?: string; output?: string }>("/config/auth-cli", {
       method: "POST",
     }),
+  logout: () =>
+    request<{ ok: boolean }>("/config/logout", { method: "POST" }),
 
   // Tasks
   listTasks: (projectId: string) => request<any[]>(`/projects/${projectId}/tasks`),

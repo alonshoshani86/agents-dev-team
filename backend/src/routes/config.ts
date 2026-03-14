@@ -3,7 +3,7 @@
  */
 
 import { readFileSync, accessSync, constants as fsConstants } from "fs";
-import { execFile, execFileSync } from "child_process";
+import { execFile, execFileSync, spawn } from "child_process";
 import { promisify } from "util";
 import * as storage from "../storage.js";
 import type { FastifyInstance } from "fastify";
@@ -139,28 +139,48 @@ export async function registerConfigRoutes(app: FastifyInstance): Promise<void> 
 
     const env: Record<string, string | undefined> = {
       ...process.env,
+      // Ensure node, npx, and sh are all findable
       PATH: `/usr/local/bin:/opt/homebrew/bin:/bin:/usr/bin:${process.env.PATH ?? ""}`,
     };
-    // Remove SDK env vars
+    // Remove SDK env vars that interfere with fresh claude-code invocations
     delete env["CLAUDECODE"];
     delete env["CLAUDE_CODE_ENTRYPOINT"];
     delete env["CLAUDE_CODE_ENABLE_SDK_FILE_CHECKPOINTING"];
+    delete env["CLAUDE_AGENT_SDK_VERSION"];
 
     try {
-      const { stdout, stderr } = await Promise.race([
-        execFileAsync(npx, ["-y", "@anthropic-ai/claude-code", "--print", "say hi in 3 words"], {
+      const result = await new Promise<{ stdout: string; stderr: string }>((resolve, reject) => {
+        const child = spawn(npx, ["-y", "@anthropic-ai/claude-code", "--print", "say hi in 3 words"], {
           env,
+          stdio: ["ignore", "pipe", "pipe"],
           timeout: 30_000,
-        }),
-        new Promise<never>((_, reject) =>
-          setTimeout(() => reject(new Error("timeout")), 30_000),
-        ),
-      ]);
+        });
+
+        let stdout = "";
+        let stderr = "";
+        child.stdout?.on("data", (d: Buffer) => { stdout += d.toString(); });
+        child.stderr?.on("data", (d: Buffer) => { stderr += d.toString(); });
+
+        const timer = setTimeout(() => {
+          child.kill("SIGTERM");
+          reject(new Error("timeout"));
+        }, 30_000);
+
+        child.on("close", (code) => {
+          clearTimeout(timer);
+          if (code === 0) resolve({ stdout, stderr });
+          else reject(new Error(stderr.slice(0, 200) || `Exit code ${code}`));
+        });
+        child.on("error", (err) => {
+          clearTimeout(timer);
+          reject(err);
+        });
+      });
 
       const config = await ensureConfig();
       config.auth_mode = "cli";
       await storage.writeJson(storage.configPath(), config);
-      return { valid: true, output: String(stdout).trim().slice(0, 100) };
+      return { valid: true, output: result.stdout.trim().slice(0, 100) };
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       if (msg === "timeout") {
@@ -168,5 +188,16 @@ export async function registerConfigRoutes(app: FastifyInstance): Promise<void> 
       }
       return { valid: false, error: msg.slice(0, 200) || "Claude Code CLI failed" };
     }
+  });
+
+  // POST /config/logout
+  app.post("/config/logout", async () => {
+    const config = await ensureConfig();
+    config.auth_mode = "";
+    config.anthropic_api_key = "";
+    await storage.writeJson(storage.configPath(), config);
+    // Clear env var so the server doesn't auto-re-auth
+    delete process.env.ANTHROPIC_API_KEY;
+    return { ok: true };
   });
 }

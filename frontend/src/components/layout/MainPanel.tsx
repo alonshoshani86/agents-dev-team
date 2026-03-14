@@ -89,13 +89,6 @@ export function MainPanel() {
               </p>
             )}
           </div>
-          <button
-            className="btn btn-secondary"
-            style={{ fontSize: 12, padding: "6px 12px" }}
-            onClick={() => setActiveView("project-settings")}
-          >
-            Project Settings
-          </button>
         </div>
 
         <div className="empty-state" style={{ height: "auto", paddingTop: 60 }}>
