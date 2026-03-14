@@ -22,11 +22,16 @@ const MAX_ITERATIONS = 10;
 // In-memory state for running tasks
 const runningTasks = new Map<string, TaskExecution>();
 
+// Export Map for testing (read-only via getter)
+export function getRunningTasks(): ReadonlyMap<string, TaskExecution> {
+  return runningTasks;
+}
+
 export type EventCallback = (event: Record<string, unknown>) => Promise<void>;
 
 // --- Pause latch (replaces asyncio.Event) ---
 
-class PauseLatch {
+export class PauseLatch {
   private _paused = false;
   private _resolve: (() => void) | null = null;
   private _promise: Promise<void> = Promise.resolve();
@@ -100,6 +105,11 @@ export class TaskExecution {
 
   get paused(): boolean {
     return this._pauseLatch.paused;
+  }
+
+  /** True only when the task is paused at the choose-next-agent checkpoint. */
+  get choosingAgent(): boolean {
+    return this._pauseLatch.paused && this.nextAgentChoice === undefined;
   }
 
   get currentRunner(): AgentRunner | null {
@@ -561,6 +571,9 @@ export function cancelTask(taskId: string): boolean {
 export function setNextAgent(taskId: string, agentName: string | null): boolean {
   const ex = runningTasks.get(taskId);
   if (!ex) return false;
+  // Only valid when the task is paused and actively waiting for an agent selection.
+  // Prevents silently bypassing the human-in-the-loop checkpoint on running tasks.
+  if (!ex.choosingAgent) return false;
   ex.nextAgentChoice = agentName;
   ex.resume();
   updateTask(ex.projectId, taskId, { status: "running", paused: false });

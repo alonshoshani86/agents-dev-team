@@ -7,7 +7,10 @@ import * as storage from "../storage.js";
 import * as engine from "../orchestrator/engine.js";
 import { listPipelines, getPipeline } from "../orchestrator/pipelines.js";
 import { listArtifacts, updateArtifactContent, getHistory, loadTerminals } from "../orchestrator/models.js";
+import { AGENT_NAMES } from "../agents/registry.js";
 import type { FastifyInstance } from "fastify";
+
+const VALID_AGENT_NAMES = AGENT_NAMES as readonly string[];
 
 type Broadcast = (projectId: string, event: Record<string, unknown>) => Promise<void>;
 
@@ -245,6 +248,12 @@ export async function registerTaskRoutes(
     const { projectId, taskId } = req.params;
     const { agent, context } = req.body;
 
+    if (!VALID_AGENT_NAMES.includes(agent)) {
+      return reply.code(400).send({
+        detail: `Invalid agent name. Must be one of: ${VALID_AGENT_NAMES.join(", ")}`,
+      });
+    }
+
     setImmediate(() => {
       engine
         .runSingleAgent(projectId, taskId, agent, context ?? null, (event) =>
@@ -266,6 +275,12 @@ export async function registerTaskRoutes(
 
     const { projectId, taskId } = req.params;
     const { agent, message } = req.body;
+
+    if (!VALID_AGENT_NAMES.includes(agent)) {
+      return reply.code(400).send({
+        detail: `Invalid agent name. Must be one of: ${VALID_AGENT_NAMES.join(", ")}`,
+      });
+    }
 
     setImmediate(() => {
       engine

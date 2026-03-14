@@ -76,7 +76,7 @@ function extractToolCalls(text: string): ToolCall[] {
  * Handles basic single/double-quoted strings; special shell operators (|, &&, ;)
  * are treated as literal tokens so they cannot be injected.
  */
-function tokenizeCommand(command: string): string[] {
+export function tokenizeCommand(command: string): string[] {
   const tokens: string[] = [];
   let current = "";
   let inQuote: '"' | "'" | null = null;
@@ -103,6 +103,17 @@ function tokenizeCommand(command: string): string[] {
   return tokens;
 }
 
+/**
+ * Resolve and validate that a path from a tool call stays within filesDir.
+ * Returns the resolved absolute path, or null if it escapes the sandbox.
+ * Uses path.resolve() to normalize symlinks/dot-segments before comparing.
+ */
+export function resolveContained(filesDir: string, relativePath: string): string | null {
+  const resolved = path.resolve(filesDir, relativePath);
+  if (resolved !== filesDir && !resolved.startsWith(filesDir + path.sep)) return null;
+  return resolved;
+}
+
 async function executeTool(
   projectId: string,
   tool: ToolCall,
@@ -112,16 +123,6 @@ async function executeTool(
   const execFileAsync = promisify(execFile);
 
   const { action_type, details } = tool;
-
-  /**
-   * Resolve and validate that a relative path from a tool call stays within filesDir.
-   * Returns the resolved absolute path, or null if the path escapes the sandbox.
-   */
-  function resolveContained(filesDir: string, relativePath: string): string | null {
-    const resolved = path.resolve(filesDir, relativePath);
-    if (resolved !== filesDir && !resolved.startsWith(filesDir + path.sep)) return null;
-    return resolved;
-  }
 
   try {
     if (action_type === "write_file") {
@@ -148,12 +149,26 @@ async function executeTool(
       const [binary, ...args] = tokenizeCommand(commandStr);
       if (!binary) return { success: false, output: "Empty command" };
 
-      const { stdout, stderr } = await Promise.race([
-        execFileAsync(binary, args, { cwd: filesDir }),
-        new Promise<never>((_, reject) => setTimeout(() => reject(new Error("timeout")), 30_000)),
-      ]);
-      const output = `${stdout}${stderr}`.slice(0, 2000);
-      return { success: true, output: output || "Done" };
+      // AbortController lets Node kill the child process on timeout (no orphan).
+      // Promise.race alone would abandon the execFileAsync promise while the
+      // subprocess kept running — the AbortController terminates it immediately.
+      const ac = new AbortController();
+      const timeoutId = setTimeout(() => ac.abort(), 30_000);
+      try {
+        const { stdout, stderr } = await execFileAsync(binary, args, {
+          cwd: filesDir,
+          signal: ac.signal,
+        });
+        clearTimeout(timeoutId);
+        const output = `${stdout}${stderr}`.slice(0, 2000);
+        return { success: true, output: output || "Done" };
+      } catch (err) {
+        clearTimeout(timeoutId);
+        if (ac.signal.aborted) {
+          return { success: false, output: "Command timed out after 30 seconds" };
+        }
+        throw err; // re-throw; outer catch returns { success: false, output: err.message }
+      }
     }
 
     if (action_type === "delete_file") {

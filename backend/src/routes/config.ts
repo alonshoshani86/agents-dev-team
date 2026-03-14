@@ -2,7 +2,7 @@
  * Config routes: read/write global config, validate API keys, auth-cli.
  */
 
-import { readFileSync } from "fs";
+import { readFileSync, accessSync, constants as fsConstants } from "fs";
 import { execFile, execFileSync } from "child_process";
 import { promisify } from "util";
 import * as storage from "../storage.js";
@@ -31,20 +31,21 @@ export function getConfig(): Record<string, unknown> {
   }
 }
 
-function maskKey(key: string): string {
+export function maskKey(key: string): string {
   if (!key) return "";
   if (key.length > 12) return key.slice(0, 8) + "..." + key.slice(-4);
   return "***";
 }
 
-function findNpx(): string | null {
+export function findNpx(): string | null {
+  // Use accessSync(X_OK) — checks existence AND executability without reading the binary.
   for (const p of ["/usr/local/bin/npx", "/opt/homebrew/bin/npx"]) {
     try {
-      readFileSync(p); // check exists
+      accessSync(p, fsConstants.X_OK);
       return p;
-    } catch { /* empty */ }
+    } catch { /* not found or not executable */ }
   }
-  // Fallback: try PATH via `which npx`
+  // Fallback: resolve via PATH using `which npx`
   try {
     const result = execFileSync("which", ["npx"], { encoding: "utf-8" }).trim();
     if (result) return result;
