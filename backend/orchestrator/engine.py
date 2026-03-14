@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 from orchestrator.models import (
     append_history, create_artifact, list_artifacts,
     append_terminal_message, update_last_terminal_message,
-    clear_agent_terminal, get_artifact_content, load_terminals,
+    get_artifact_content, load_terminals,
 )
 from orchestrator.pipelines import get_pipeline
 
