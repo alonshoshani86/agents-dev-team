@@ -115,6 +115,17 @@ export function useAgentChat(projectId: string | null, agentName: string | null)
           if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
             setCompletedMessages((prev) => [...prev, { role: "user", content: message }]);
             wsRef.current.send(JSON.stringify({ type: "message", message }));
+          } else {
+            // Connection could not be re-established — show an error in chat
+            setCompletedMessages((prev) => [
+              ...prev,
+              { role: "user", content: message },
+              {
+                role: "assistant",
+                content:
+                  "⚠️ Message could not be delivered — connection unavailable. Please check your connection and try again.",
+              },
+            ]);
           }
         }, 500);
         return;

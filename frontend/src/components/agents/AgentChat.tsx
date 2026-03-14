@@ -194,6 +194,8 @@ export function AgentChat({ projectId, agentName, agentDisplayName }: Props) {
     if (!input.trim()) return;
     sendMessage(input.trim());
     setInput("");
+    // Restore focus so the user can type their next message without clicking
+    inputRef.current?.focus();
   }
 
   function handleKeyDown(e: React.KeyboardEvent) {
