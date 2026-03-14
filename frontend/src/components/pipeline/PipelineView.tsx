@@ -45,9 +45,10 @@ export function PipelineView() {
     return unsub;
   }, []);
 
-  // Read terminals and usage directly from store (after force update)
+  // Read terminals directly from store (after force update triggers re-render)
   const agentTerminals = useStore.getState().agentTerminals;
-  const contextUsage = useStore.getState().contextUsage;
+  // Read contextUsage reactively so CostBreakdownPanel updates live during streaming
+  const contextUsage = useStore((s) => s.contextUsage);
 
   const task = tasks.find((t) => t.id === activeTaskId);
   const activeTerminal: AgentTerminalState | null = pipelineAgentTab
