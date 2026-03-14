@@ -135,6 +135,24 @@ export function PipelineView() {
     }
   }
 
+  // Inject context only (no agent run) — used when status is choosing_agent
+  async function handleInjectContextOnly() {
+    if (!userInput.trim() || !activeProjectId || !activeTaskId) return;
+    setSending(true);
+    try {
+      await api.injectContext(activeProjectId, activeTaskId, userInput.trim());
+      useStore.getState().addAgentUserMessage(
+        pipelineAgentTab || task?.current_agent || "product",
+        userInput.trim()
+      );
+      setUserInput("");
+    } catch (err) {
+      console.error("Failed to inject context:", err);
+    } finally {
+      setSending(false);
+    }
+  }
+
   async function handleRunAgent(agentName: string) {
     if (!activeProjectId || !activeTaskId) return;
     setStartingAgent(agentName);
@@ -182,20 +200,26 @@ export function PipelineView() {
       handleSendInput();
       return;
     }
-    // When run bar is visible, try to detect agent routing intent
-    if (showRunBar) {
-      const detectedAgent = detectAgentFromInput(userInput);
-      if (detectedAgent) {
-        handleRunAgent(detectedAgent);
-        return;
-      }
+    // Always check for "run <agent>" intent first — works in any status
+    const detectedAgent = detectAgentFromInput(userInput);
+    if (detectedAgent) {
+      handleRunAgent(detectedAgent);
+      return;
     }
+    // When choosing next agent, just save context (user picks agent via buttons)
+    if (pipelineChoosingAgent || task?.status === "choosing_agent") {
+      handleInjectContextOnly();
+      return;
+    }
+    // All other states (running, completed, failed, cancelled, pending) → ask agent
     handleAskAgent();
   }
 
   async function handleAskAgent() {
     const agent = pipelineAgentTab || task?.current_agent || "product";
     if (!userInput.trim() || !activeProjectId || !activeTaskId) return;
+    // Reset any stale "thinking" state from a previous ask before starting a new one
+    useStore.getState().setAskingAgent(false);
     setSending(true);
     try {
       // Ensure we have a tab selected
@@ -206,9 +230,17 @@ export function PipelineView() {
       useStore.getState().setAskingAgent(true);
       await api.askAgent(activeProjectId, activeTaskId, agent, userInput.trim());
       setUserInput("");
+      // Safety fallback: if ask_agent_done websocket event never arrives, reset
+      // after 60 s so the "thinking" indicator doesn't get stuck.
+      setTimeout(() => {
+        if (useStore.getState().askingAgent) {
+          useStore.getState().setAskingAgent(false);
+        }
+      }, 60_000);
     } catch (err) {
       console.error("Failed to ask agent:", err);
       useStore.getState().setAskingAgent(false);
+      useStore.getState().addAgentSystemMessage(agent, "⚠ Failed to send message. Please try again.");
     } finally {
       setSending(false);
     }
@@ -423,17 +455,6 @@ export function PipelineView() {
             </div>
           ))}
 
-          {/* Thinking indicator when asking agent */}
-          {askingAgent && !activeTerminal?.streaming && (
-            <div className="terminal-thinking">
-              <span className="thinking-dots">
-                <span className="dot-1" />
-                <span className="dot-2" />
-                <span className="dot-3" />
-              </span>
-              <span className="thinking-text">Agent is thinking...</span>
-            </div>
-          )}
         </div>
 
         {/* Run Agent / Choose Next Agent bar */}
@@ -470,43 +491,58 @@ export function PipelineView() {
           </div>
         )}
 
-        {/* Input area — always visible when a task exists */}
+        {/* Input area — always visible regardless of task/pipeline status */}
         {task && (
           <div className="terminal-input-area">
             <span className="terminal-input-prompt">&gt;</span>
-            <textarea
-              value={userInput}
-              onChange={(e) => setUserInput(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && !e.shiftKey && !pipelineChoosingAgent) {
-                  e.preventDefault();
-                  handleSubmitInput();
-                }
-              }}
-              placeholder={pipelineChoosingAgent
-                ? "Optional: add instructions for the next agent, then click an agent above..."
-                : pipelineWaitingInput
-                  ? "Ask a question or provide your answer..."
-                  : "Add instructions (optional) then click an agent above, or ask a question..."}
-              disabled={sending || askingAgent}
-              rows={1}
-              autoFocus={pipelineWaitingInput}
-            />
-            <div className="terminal-input-buttons">
-              {!pipelineChoosingAgent && (
-                <button
-                  className="btn-ask-agent"
-                  onClick={handleSubmitInput}
-                  disabled={!userInput.trim() || sending || askingAgent}
-                >
-                  {askingAgent ? "Thinking..." : "Send"}
-                </button>
+            <div className="terminal-input-col">
+              {askingAgent && (
+                <div className="terminal-thinking-status">
+                  <span className="thinking-dots">
+                    <span className="dot-1" />
+                    <span className="dot-2" />
+                    <span className="dot-3" />
+                  </span>
+                  <span>Agent is thinking…</span>
+                </div>
               )}
+              <textarea
+                value={userInput}
+                onChange={(e) => setUserInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && !e.shiftKey) {
+                    e.preventDefault();
+                    handleSubmitInput();
+                  }
+                }}
+                placeholder={
+                  pipelineWaitingInput || task?.status === "waiting_input"
+                    ? "Ask a question or provide your answer…"
+                    : pipelineChoosingAgent || task?.status === "choosing_agent"
+                      ? "Add context for the next agent… (Enter to send)"
+                      : task?.status === "running"
+                        ? "Ask a question or add instructions…"
+                        : task?.status === "completed" || task?.status === "failed" || task?.status === "cancelled"
+                          ? "Ask a follow-up question or type 'run dev' to run another agent…"
+                          : "Ask a question, add instructions, or type 'run dev' to start an agent…"
+                }
+                rows={1}
+                autoFocus={pipelineWaitingInput}
+              />
+            </div>
+            <div className="terminal-input-buttons">
+              {/* Send is always enabled — available at any pipeline state or after agent finishes */}
+              <button
+                className="btn-ask-agent"
+                onClick={handleSubmitInput}
+              >
+                {sending ? "Sending…" : "Send"}
+              </button>
               {(pipelineWaitingInput || task.status === "waiting_input") && (
                 <button
                   className="btn-resume-pipeline"
                   onClick={handleSendInput}
-                  disabled={!userInput.trim() || sending || askingAgent}
+                  disabled={!userInput.trim()}
                 >
                   Resume Pipeline
                 </button>
