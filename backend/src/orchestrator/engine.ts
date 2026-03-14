@@ -183,7 +183,11 @@ function hasActiveAgent(projectId: string, excludeTaskId?: string): string | nul
 async function setupWorktree(projectId: string, taskId: string): Promise<[string | null, string | null]> {
   const repoPath = storage.getRepoPath(projectId);
   if (!repoPath || !worktree.isGitRepo(repoPath)) return [null, null];
-  const [success, result, branch] = await worktree.createWorktree(repoPath, taskId);
+  const taskData = await storage.readJson<Record<string, unknown>>(
+    path.join(storage.projectTasksDir(projectId), taskId, "task.json"),
+  );
+  const taskName = (taskData?.title as string | undefined) ?? "";
+  const [success, result, branch] = await worktree.createWorktree(repoPath, taskId, taskName);
   if (success) {
     console.log(`[engine] Task ${taskId} worktree ready: ${result} (branch: ${branch})`);
     return [result, branch];

@@ -89,7 +89,11 @@ async def _setup_worktree(project_id: str, task_id: str) -> tuple[Optional[str],
     if not repo_path or not wt.is_git_repo(repo_path):
         return None, None
 
-    success, result, branch = await wt.create_worktree(repo_path, task_id)
+    task = storage.read_json(
+        storage.project_tasks_dir(project_id) / task_id / "task.json"
+    )
+    task_name = task.get("title", "") if task else ""
+    success, result, branch = await wt.create_worktree(repo_path, task_id, task_name)
     if success:
         logger.info("Task %s worktree ready: %s (branch: %s)", task_id, result, branch)
         return result, branch
@@ -311,8 +315,22 @@ async def _execute_agent(
 
         async def _on_usage(usage: dict) -> None:
             """Forward usage/token info to frontend."""
+            is_final = usage.get("final", False)
+            cost_usd = usage.get("costUSD")
+
+            # When an agent finishes, accumulate cost into the task's total
+            total_cost_usd = None
+            if is_final and cost_usd is not None:
+                task_path = storage.project_tasks_dir(execution.project_id) / execution.task_id / "task.json"
+                task_data = storage.read_json(task_path)
+                if task_data is not None:
+                    existing_total = task_data.get("total_cost_usd") or 0.0
+                    total_cost_usd = existing_total + cost_usd
+                    task_data["total_cost_usd"] = total_cost_usd
+                    storage.write_json(task_path, task_data)
+
             if on_event:
-                await on_event({
+                event: dict = {
                     "type": "usage_update",
                     "task_id": execution.task_id,
                     "agent": agent_name,
@@ -321,10 +339,13 @@ async def _execute_agent(
                     "cacheRead": usage.get("cacheRead", 0),
                     "cacheCreation": usage.get("cacheCreation", 0),
                     "contextWindow": usage.get("contextWindow"),
-                    "costUSD": usage.get("costUSD"),
+                    "costUSD": cost_usd,
                     "numTurns": usage.get("numTurns"),
-                    "final": usage.get("final", False),
-                })
+                    "final": is_final,
+                }
+                if total_cost_usd is not None:
+                    event["totalCostUSD"] = total_cost_usd
+                await on_event(event)
 
         async def _on_activity(activity: dict) -> None:
             """Forward thinking/tool activity events to frontend."""

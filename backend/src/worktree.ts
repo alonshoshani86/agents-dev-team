@@ -44,8 +44,20 @@ export function worktreePathForTask(repoPath: string, taskId: string): string {
   return path.join(worktreeBaseDir(repoPath), taskId);
 }
 
-export function branchNameForTask(taskId: string): string {
-  return `task/${taskId}`;
+function slugify(name: string): string {
+  return name
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9\s-]/g, "")
+    .replace(/[\s_]+/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-|-$/g, "")
+    .slice(0, 50);
+}
+
+export function branchNameForTask(taskId: string, taskName = ""): string {
+  const slug = taskName ? slugify(taskName) : "";
+  return slug ? `task/${slug}` : `task/${taskId}`;
 }
 
 /**
@@ -55,13 +67,14 @@ export function branchNameForTask(taskId: string): string {
 export async function createWorktree(
   repoPath: string,
   taskId: string,
+  taskName = "",
 ): Promise<[boolean, string, string | null]> {
   if (!isGitRepo(repoPath)) {
     return [false, `Not a git repository: ${repoPath}`, null];
   }
 
   const wtPath = worktreePathForTask(repoPath, taskId);
-  const branch = branchNameForTask(taskId);
+  const branch = branchNameForTask(taskId, taskName);
 
   // Already exists (e.g. task restart)
   if (fs.existsSync(wtPath)) {

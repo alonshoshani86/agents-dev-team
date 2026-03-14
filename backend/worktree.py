@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+import re
 from pathlib import Path
 from typing import Optional, Tuple
 
@@ -50,12 +51,22 @@ def worktree_path_for_task(repo_path: str, task_id: str) -> Path:
     return worktree_base_dir(repo_path) / task_id
 
 
-def branch_name_for_task(task_id: str) -> str:
-    return f"task/{task_id}"
+def _slugify(name: str) -> str:
+    """Convert a task name into a git-safe branch slug."""
+    slug = name.lower().strip()
+    slug = re.sub(r'[^a-z0-9\s\-]', '', slug)
+    slug = re.sub(r'[\s_]+', '-', slug)
+    slug = re.sub(r'-+', '-', slug).strip('-')
+    return slug[:50]
+
+
+def branch_name_for_task(task_id: str, task_name: str = "") -> str:
+    slug = _slugify(task_name) if task_name else ""
+    return f"task/{slug}" if slug else f"task/{task_id}"
 
 
 async def create_worktree(
-    repo_path: str, task_id: str
+    repo_path: str, task_id: str, task_name: str = ""
 ) -> Tuple[bool, str, Optional[str]]:
     """Create a git worktree for a task.
 
@@ -65,7 +76,7 @@ async def create_worktree(
         return False, f"Not a git repository: {repo_path}", None
 
     wt_path = worktree_path_for_task(repo_path, task_id)
-    branch = branch_name_for_task(task_id)
+    branch = branch_name_for_task(task_id, task_name)
 
     # Already exists (e.g. task restart)
     if wt_path.exists():
