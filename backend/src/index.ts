@@ -86,12 +86,7 @@ async function main() {
   await registerConfigRoutes(app);
   await registerAgentRoutes(app);
   await registerTaskRoutes(app, broadcast);
-  await app.register(
-    async (instance) => {
-      await registerFileRoutes(instance);
-    },
-    { prefix: "/files" },
-  );
+  await registerFileRoutes(app);
   await registerWebSocketRoutes(app);
 
   // --- Start ---

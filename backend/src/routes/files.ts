@@ -13,19 +13,28 @@ async function getAllowedRoots(): Promise<string[]> {
   // (home dir is needed for the FolderPicker "browse from root" use case)
   const roots: string[] = [path.resolve(storage.DATA_DIR), os.homedir()];
 
-  // Allow any project's repo_path from their project.json
-  const projectDirs = await storage.listDirs(storage.projectsDir());
-  for (const projectId of projectDirs) {
-    const projectData = await storage.readJson<Record<string, unknown>>(
-      storage.projectJsonPath(projectId),
-    );
-    if (!projectData) continue;
-    const paths = (projectData.paths as Array<{ path?: string }>) ?? [];
-    for (const p of paths) {
-      if (p.path && existsSync(p.path) && statSync(p.path).isDirectory()) {
-        roots.push(path.resolve(p.path));
+  // Allow any project's repo_path from their project.json.
+  // Wrap in try/catch so a missing or corrupt projects dir never crashes the endpoint.
+  try {
+    const projectDirs = await storage.listDirs(storage.projectsDir());
+    for (const projectId of projectDirs) {
+      try {
+        const projectData = await storage.readJson<Record<string, unknown>>(
+          storage.projectJsonPath(projectId),
+        );
+        if (!projectData) continue;
+        const paths = (projectData.paths as Array<{ path?: string }>) ?? [];
+        for (const p of paths) {
+          if (p.path && existsSync(p.path) && statSync(p.path).isDirectory()) {
+            roots.push(path.resolve(p.path));
+          }
+        }
+      } catch {
+        // skip individual project if its metadata is unreadable
       }
     }
+  } catch {
+    // projects dir doesn't exist yet (fresh install) — that's fine
   }
 
   return roots;
