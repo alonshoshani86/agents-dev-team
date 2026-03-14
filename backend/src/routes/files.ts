@@ -23,11 +23,9 @@ async function getAllowedRoots(): Promise<string[]> {
           storage.projectJsonPath(projectId),
         );
         if (!projectData) continue;
-        const paths = (projectData.paths as Array<{ path?: string }>) ?? [];
-        for (const p of paths) {
-          if (p.path && existsSync(p.path) && statSync(p.path).isDirectory()) {
-            roots.push(path.resolve(p.path));
-          }
+        const repoPath = projectData.repo_path as string | undefined;
+        if (repoPath && existsSync(repoPath) && statSync(repoPath).isDirectory()) {
+          roots.push(path.resolve(repoPath));
         }
       } catch {
         // skip individual project if its metadata is unreadable

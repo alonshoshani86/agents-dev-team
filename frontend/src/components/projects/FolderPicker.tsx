@@ -62,7 +62,7 @@ export function FolderPicker({ initialPath, onSelect, onClose }: Props) {
       return;
     }
 
-    if (state?.children !== null && state?.children !== undefined) {
+    if (!state?.error && state?.children !== null && state?.children !== undefined) {
       // Already loaded — just re-expand
       setNodeStates((prev) => ({
         ...prev,
