@@ -190,3 +190,26 @@ export async function initProjectDirs(projectId: string): Promise<void> {
   await fs.mkdir(projectPipelinesDir(projectId), { recursive: true });
   await fs.mkdir(path.join(projectDir(projectId), "files"), { recursive: true });
 }
+
+// --- Slug helpers ---
+
+export function slugify(text: string): string {
+  return text
+    .toLowerCase()
+    .trim()
+    .replace(/[^\w\s-]/g, '')
+    .replace(/[\s_]+/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^-|-$/g, '')
+    .slice(0, 50);
+}
+
+export async function uniqueTaskSlug(projectId: string, baseSlug: string): Promise<string> {
+  let slug = baseSlug;
+  let counter = 2;
+  const tasksDir = projectTasksDir(projectId);
+  while (await fs.access(path.join(tasksDir, slug)).then(() => true).catch(() => false)) {
+    slug = `${baseSlug.slice(0, 47)}-${counter++}`;
+  }
+  return slug;
+}

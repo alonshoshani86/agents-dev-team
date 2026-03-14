@@ -17,7 +17,7 @@ router = APIRouter()
 
 
 class CreateTaskRequest(BaseModel):
-    title: str
+    name: str
     description: Optional[str] = ""
     priority: Optional[str] = "medium"
     pipeline_id: Optional[str] = None
@@ -47,15 +47,21 @@ async def create_task(project_id: str, req: CreateTaskRequest):
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
 
-    task_id = storage.generate_id()
+    base_slug = storage.slugify(req.name)
+    if not base_slug:
+        raise HTTPException(status_code=400, detail="Task name produces an empty slug")
+    task_id = storage.unique_task_slug(project_id, base_slug)
+
     task = {
         "id": task_id,
         "project_id": project_id,
-        "title": req.title,
+        "name": req.name,
+        "title": req.name,
         "description": req.description,
         "priority": req.priority,
         "status": "pending",
         "pipeline_id": req.pipeline_id,
+        "branch_name": f"task/{task_id}",
         "current_agent": None,
         "current_step": None,
         "paused": False,
@@ -161,7 +167,12 @@ async def pause_task(project_id: str, task_id: str):
 @router.post("/projects/{project_id}/tasks/{task_id}/resume")
 async def resume_task(project_id: str, task_id: str):
     if not engine.resume_task(task_id):
-        raise HTTPException(status_code=404, detail="Task not running")
+        # Task not in memory (e.g. after server restart) — just update status on disk
+        task = _get_task(project_id, task_id)
+        task["status"] = "choosing_agent"
+        task["paused"] = False
+        task["updated_at"] = storage.now_iso()
+        storage.write_json(storage.project_tasks_dir(project_id) / task_id / "task.json", task)
     await broadcast(project_id, {"type": "task_resumed", "task_id": task_id})
     return {"status": "running"}
 
@@ -188,8 +199,31 @@ class NextAgentRequest(BaseModel):
 @router.post("/projects/{project_id}/tasks/{task_id}/next-agent")
 async def set_next_agent(project_id: str, task_id: str, req: NextAgentRequest):
     """User chooses which agent runs next, or None to finish."""
-    if not engine.set_next_agent(task_id, req.agent):
-        raise HTTPException(status_code=404, detail="Task not running")
+    if engine.set_next_agent(task_id, req.agent):
+        # Task was in memory — pipeline loop continues
+        await broadcast(project_id, {
+            "type": "next_agent_chosen",
+            "task_id": task_id,
+            "agent": req.agent,
+        })
+        return {"status": "ok", "next_agent": req.agent}
+
+    # Task not in memory (e.g. after server restart) — handle gracefully
+    if req.agent is None:
+        # User chose "Finish" — just mark as completed
+        task = _get_task(project_id, task_id)
+        task["status"] = "completed"
+        task["paused"] = False
+        task["updated_at"] = storage.now_iso()
+        storage.write_json(storage.project_tasks_dir(project_id) / task_id / "task.json", task)
+        await broadcast(project_id, {"type": "task_completed", "task_id": task_id})
+        return {"status": "ok", "next_agent": None}
+
+    # User chose an agent — start a fresh single-agent run
+    async def on_event(event):
+        await broadcast(project_id, event)
+
+    asyncio.create_task(engine.run_single_agent(project_id, task_id, req.agent, on_event=on_event))
     await broadcast(project_id, {
         "type": "next_agent_chosen",
         "task_id": task_id,

@@ -32,20 +32,25 @@ export async function registerTaskRoutes(
   // POST /projects/:projectId/tasks
   app.post<{
     Params: { projectId: string };
-    Body: { title: string; description?: string; priority?: string; pipeline_id?: string };
+    Body: { name: string; description?: string; priority?: string; pipeline_id?: string };
   }>("/projects/:projectId/tasks", async (req, reply) => {
     const project = await storage.readJson(storage.projectJsonPath(req.params.projectId));
     if (!project) return reply.code(404).send({ detail: "Project not found" });
 
-    const taskId = storage.generateId();
+    const baseSlug = storage.slugify(req.body.name);
+    if (!baseSlug) return reply.code(400).send({ detail: "Task name produces an empty slug" });
+    const taskId = await storage.uniqueTaskSlug(req.params.projectId, baseSlug);
+
     const task = {
       id: taskId,
       project_id: req.params.projectId,
-      title: req.body.title,
+      name: req.body.name,
+      title: req.body.name,
       description: req.body.description ?? "",
       priority: req.body.priority ?? "medium",
       status: "pending",
       pipeline_id: req.body.pipeline_id ?? null,
+      branch_name: "task/" + taskId,
       current_agent: null,
       current_step: null,
       paused: false,

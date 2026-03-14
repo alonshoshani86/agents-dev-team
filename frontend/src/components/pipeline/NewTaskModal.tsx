@@ -2,6 +2,17 @@ import { useState, useEffect } from "react";
 import { useStore } from "../../stores/useStore";
 import { api } from "../../api/client";
 
+function slugify(text: string): string {
+  return text
+    .toLowerCase()
+    .trim()
+    .replace(/[^\w\s-]/g, '')
+    .replace(/[\s_]+/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^-|-$/g, '')
+    .slice(0, 50);
+}
+
 interface Pipeline {
   id: string;
   name: string;
@@ -41,7 +52,7 @@ export function NewTaskModal({ onClose }: Props) {
     try {
       // Create task
       const task = await api.createTask(activeProjectId, {
-        title: title.trim(),
+        name: title.trim(),
         description: description.trim(),
         pipeline_id: selectedPipeline,
       });
@@ -70,13 +81,18 @@ export function NewTaskModal({ onClose }: Props) {
         <h2>New Task</h2>
 
         <div className="form-group">
-          <label>Title</label>
+          <label>Task Name</label>
           <input
             value={title}
             onChange={(e) => setTitle(e.target.value)}
-            placeholder="e.g. Add user authentication"
+            placeholder="e.g. Fix Login Bug"
             autoFocus
           />
+          {title.trim() && (
+            <div style={{ marginTop: 4, fontSize: 11, color: "var(--text-muted)" }}>
+              Branch: <code style={{ fontFamily: "monospace", color: "var(--text-secondary)" }}>task/{slugify(title.trim())}</code>
+            </div>
+          )}
         </div>
 
         <div className="form-group">

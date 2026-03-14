@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 import os
 import shutil
 import uuid
@@ -184,3 +185,24 @@ def init_project_dirs(project_id: str) -> None:
         project_files_dir,
     ]:
         dir_fn(project_id).mkdir(parents=True, exist_ok=True)
+
+
+# --- Slug helpers ---
+
+def slugify(text: str) -> str:
+    text = text.lower().strip()
+    text = re.sub(r'[^\w\s-]', '', text)
+    text = re.sub(r'[\s_]+', '-', text)
+    text = re.sub(r'-+', '-', text)
+    text = text.strip('-')
+    return text[:50]
+
+
+def unique_task_slug(project_id: str, base_slug: str) -> str:
+    slug = base_slug
+    tasks_dir = project_tasks_dir(project_id)
+    counter = 2
+    while (tasks_dir / slug).exists():
+        slug = f"{base_slug[:47]}-{counter}"
+        counter += 1
+    return slug
