@@ -85,7 +85,7 @@ export async function registerCleanupRoutes(app: FastifyInstance): Promise<void>
       }
 
       try {
-        const sizeBeforeDelete = await getSizeOrZero(absPath);
+        const sizeBeforeDelete = await scanner.getSize(absPath);
         const ok = await storage.deletePath(absPath);
         if (ok) {
           deleted.push(relPath);
@@ -105,20 +105,3 @@ export async function registerCleanupRoutes(app: FastifyInstance): Promise<void>
   });
 }
 
-async function getSizeOrZero(fsPath: string): Promise<number> {
-  const { stat } = await import("fs/promises");
-  try {
-    const s = await stat(fsPath);
-    if (s.isFile()) return s.size;
-    // For directories, do a quick recursive sum
-    const { readdir } = await import("fs/promises");
-    let total = 0;
-    const entries = await readdir(fsPath, { withFileTypes: true });
-    for (const entry of entries) {
-      total += await getSizeOrZero(`${fsPath}/${entry.name}`);
-    }
-    return total;
-  } catch {
-    return 0;
-  }
-}

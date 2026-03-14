@@ -8,12 +8,14 @@ interface CleanupPanelProps {
 
 const CATEGORY_LABELS: Record<FileCategory, string> = {
   tasks: "Task Directories",
+  artifacts: "Old Artifact Versions",
   pipelines: "Pipeline Configs",
   files: "Working Files",
 };
 
 const CATEGORY_DESCRIPTIONS: Record<FileCategory, string> = {
   tasks: "Task folders for completed, cancelled, or failed tasks",
+  artifacts: "Older artifact versions superseded by newer ones in active tasks (uncertain — review before deleting)",
   pipelines: "Pipeline configs not referenced by any task",
   files: "Files in the project's files/ directory with no detected references (uncertain — review before deleting)",
 };
@@ -158,6 +160,7 @@ export function CleanupPanel({ projectId }: CleanupPanelProps) {
   function allUnused(result: CleanupScanResult): UnusedFile[] {
     return [
       ...result.categories.tasks,
+      ...result.categories.artifacts,
       ...result.categories.pipelines,
       ...result.categories.files,
     ];
@@ -193,6 +196,7 @@ export function CleanupPanel({ projectId }: CleanupPanelProps) {
           ...prev,
           categories: {
             tasks: filterOut(prev.categories.tasks),
+            artifacts: filterOut(prev.categories.artifacts),
             pipelines: filterOut(prev.categories.pipelines),
             files: filterOut(prev.categories.files),
           },
@@ -230,11 +234,12 @@ export function CleanupPanel({ projectId }: CleanupPanelProps) {
     }
   }
 
-  const categories: FileCategory[] = ["tasks", "pipelines", "files"];
+  const categories: FileCategory[] = ["tasks", "artifacts", "pipelines", "files"];
   const totalSelected = selected.size;
   const hasResults =
     scanResult &&
     (scanResult.categories.tasks.length > 0 ||
+      scanResult.categories.artifacts.length > 0 ||
       scanResult.categories.pipelines.length > 0 ||
       scanResult.categories.files.length > 0);
 
@@ -380,7 +385,7 @@ export function CleanupPanel({ projectId }: CleanupPanelProps) {
                       ({files.length})
                     </span>
                   </span>
-                  {cat === "files" && (
+                  {(cat === "files" || cat === "artifacts") && (
                     <span
                       style={{
                         fontSize: 11,

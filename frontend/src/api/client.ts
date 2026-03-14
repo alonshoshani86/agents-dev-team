@@ -7,7 +7,10 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({ detail: res.statusText }));
-    throw new Error(err.detail || res.statusText);
+    // Include the machine-readable `error` code (if present) in the thrown message
+    // so callers can detect specific error types like "scan_expired" reliably.
+    const message = err.error ? `${err.error}: ${err.detail || res.statusText}` : (err.detail || res.statusText);
+    throw new Error(message);
   }
   return res.json();
 }

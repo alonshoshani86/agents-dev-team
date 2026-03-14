@@ -72,7 +72,7 @@ export interface FileNode {
 
 // ── Cleanup ──────────────────────────────────────────────────────────────────
 
-export type FileCategory = "tasks" | "pipelines" | "files";
+export type FileCategory = "tasks" | "artifacts" | "pipelines" | "files";
 export type FileCertainty = "safe" | "uncertain";
 
 export interface UnusedFile {
@@ -90,6 +90,7 @@ export interface CleanupScanResult {
   scanned_at: string;
   categories: {
     tasks: UnusedFile[];
+    artifacts: UnusedFile[];
     pipelines: UnusedFile[];
     files: UnusedFile[];
   };

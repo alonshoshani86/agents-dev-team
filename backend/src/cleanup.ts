@@ -8,7 +8,7 @@ import { existsSync } from "fs";
 import path from "path";
 import * as storage from "./storage.js";
 
-export type FileCategory = "tasks" | "pipelines" | "files";
+export type FileCategory = "tasks" | "artifacts" | "pipelines" | "files";
 export type FileCertainty = "safe" | "uncertain";
 
 export interface UnusedFile {
@@ -26,6 +26,7 @@ export interface CleanupScanResult {
   scanned_at: string;
   categories: {
     tasks: UnusedFile[];
+    artifacts: UnusedFile[];
     pipelines: UnusedFile[];
     files: UnusedFile[];
   };
@@ -48,7 +49,7 @@ const ACTIVE_TASK_STATUSES = new Set([
 const DONE_TASK_STATUSES = new Set(["completed", "cancelled", "failed", "interrupted"]);
 
 /** Recursively compute total size in bytes of a path (file or directory). */
-async function getSize(fsPath: string): Promise<number> {
+export async function getSize(fsPath: string): Promise<number> {
   try {
     const stat = await fs.stat(fsPath);
     if (stat.isFile()) return stat.size;
@@ -143,6 +144,86 @@ async function listAllFilesRelative(dirPath: string, base: string): Promise<stri
   return result;
 }
 
+/**
+ * Check whether any task OTHER than the given one references it — used to
+ * determine if a completed task's artifacts are still needed downstream.
+ */
+async function hasSuccessorReferences(taskId: string, tasksDir: string): Promise<boolean> {
+  const allTaskIds = await storage.listDirs(tasksDir);
+  for (const otherId of allTaskIds) {
+    if (otherId === taskId) continue;
+    // Search task.json and history.json for any mention of the task ID
+    const taskJsonContent = await storage.readTextFile(path.join(tasksDir, otherId, "task.json"));
+    if (taskJsonContent?.includes(taskId)) return true;
+    const historyContent = await storage.readTextFile(path.join(tasksDir, otherId, "history.json"));
+    if (historyContent?.includes(taskId)) return true;
+  }
+  return false;
+}
+
+/**
+ * Scan artifacts directories of ACTIVE tasks for superseded old artifact
+ * versions (e.g. prd-v1.md when prd-v2.md also exists).
+ */
+async function scanArtifacts(
+  tasksDir: string,
+  projectRoot: string,
+  scannedAt: string,
+): Promise<UnusedFile[]> {
+  const unusedArtifacts: UnusedFile[] = [];
+  const taskIds = await storage.listDirs(tasksDir);
+
+  for (const taskId of taskIds) {
+    const taskDir = path.join(tasksDir, taskId);
+    const task = await storage.readJson<Record<string, unknown>>(path.join(taskDir, "task.json"));
+    if (!task) continue;
+
+    const status = String(task.status ?? "");
+    // Only inspect artifacts inside active tasks; done-task dirs are flagged wholesale
+    if (!ACTIVE_TASK_STATUSES.has(status)) continue;
+
+    const artifactsDir = path.join(taskDir, "artifacts");
+    let artifactFiles: string[];
+    try {
+      artifactFiles = await fs.readdir(artifactsDir);
+    } catch {
+      continue;
+    }
+
+    // Group files by base name, stripping trailing version suffixes like -v1, -run2
+    const groups = new Map<string, string[]>();
+    for (const fname of artifactFiles) {
+      if (!fname.endsWith(".md")) continue;
+      const base = fname.replace(/-v\d+\.md$/, "").replace(/-run\d+\.md$/, "");
+      const group = groups.get(base) ?? [];
+      group.push(fname);
+      groups.set(base, group);
+    }
+
+    // Flag all but the latest (alphabetically highest) version in each group
+    for (const [, files] of groups) {
+      if (files.length <= 1) continue;
+      const sorted = [...files].sort();
+      const oldVersions = sorted.slice(0, -1);
+      for (const fname of oldVersions) {
+        const absPath = path.join(artifactsDir, fname);
+        const stat = await fs.stat(absPath).catch(() => null);
+        unusedArtifacts.push({
+          path: path.relative(projectRoot, absPath),
+          abs_path: absPath,
+          size_bytes: stat?.size ?? 0,
+          last_modified: stat ? stat.mtime.toISOString() : scannedAt,
+          reason: "Older artifact version superseded by a newer version in the same task",
+          category: "artifacts",
+          certainty: "uncertain",
+        });
+      }
+    }
+  }
+
+  return unusedArtifacts;
+}
+
 export async function scanProject(projectId: string): Promise<CleanupScanResult> {
   const scanId = `scan-${Date.now()}`;
   const scannedAt = new Date().toISOString();
@@ -153,6 +234,7 @@ export async function scanProject(projectId: string): Promise<CleanupScanResult>
   const filesDir = path.join(projectRoot, "files");
 
   const unusedTasks: UnusedFile[] = [];
+  const unusedArtifacts: UnusedFile[] = [];
   const unusedPipelines: UnusedFile[] = [];
   const unusedFiles: UnusedFile[] = [];
 
@@ -185,6 +267,14 @@ export async function scanProject(projectId: string): Promise<CleanupScanResult>
         reason = "Task completed — artifacts can be archived or removed";
       }
 
+      // For completed tasks, check if any other task references this one downstream.
+      // If so, mark uncertain; if not, it is safe to delete.
+      let certainty: FileCertainty = "safe";
+      if (status === "completed") {
+        const referencedBySuccessor = await hasSuccessorReferences(taskId, tasksDir);
+        certainty = referencedBySuccessor ? "uncertain" : "safe";
+      }
+
       unusedTasks.push({
         path: path.relative(projectRoot, taskDir),
         abs_path: taskDir,
@@ -192,12 +282,15 @@ export async function scanProject(projectId: string): Promise<CleanupScanResult>
         last_modified: lastModified,
         reason,
         category: "tasks",
-        certainty: status === "completed" ? "uncertain" : "safe",
+        certainty,
       });
     }
   }
 
-  // ── 2. Scan pipelines/ ─────────────────────────────────────────────────────
+  // ── 2. Scan artifacts inside active tasks ─────────────────────────────────
+  unusedArtifacts.push(...(await scanArtifacts(tasksDir, projectRoot, scannedAt)));
+
+  // ── 3. Scan pipelines/ ─────────────────────────────────────────────────────
   const referencedPipelineIds = await collectReferencedPipelineIds(projectId);
   try {
     const pipelineFiles = await fs.readdir(pipelinesDir);
@@ -224,7 +317,7 @@ export async function scanProject(projectId: string): Promise<CleanupScanResult>
     // pipelines dir may not exist
   }
 
-  // ── 3. Scan files/ (opt-in, uncertain) ────────────────────────────────────
+  // ── 4. Scan files/ (opt-in, uncertain) ────────────────────────────────────
   if (existsSync(filesDir)) {
     const fileRefs = await buildFileReferenceSet(projectId);
     const allFiles = await listAllFilesRelative(filesDir, projectRoot);
@@ -247,12 +340,13 @@ export async function scanProject(projectId: string): Promise<CleanupScanResult>
     }
   }
 
-  const allUnused = [...unusedTasks, ...unusedPipelines, ...unusedFiles];
+  const allUnused = [...unusedTasks, ...unusedArtifacts, ...unusedPipelines, ...unusedFiles];
   return {
     scan_id: scanId,
     scanned_at: scannedAt,
     categories: {
       tasks: unusedTasks,
+      artifacts: unusedArtifacts,
       pipelines: unusedPipelines,
       files: unusedFiles,
     },
@@ -268,6 +362,17 @@ const ALWAYS_PROTECTED = new Set([
   "project.json",
   "context.json",
   "agents",
+]);
+
+/**
+ * Root directories that must never be removed even when empty — deleting them
+ * breaks project structure (future task creation, file writes, etc.).
+ */
+const PROTECTED_ROOT_DIRS = new Set([
+  "agents",
+  "tasks",
+  "pipelines",
+  "files",
 ]);
 
 export function isProtectedPath(relPath: string): boolean {
@@ -334,7 +439,7 @@ export async function pruneEmptyDirs(rootPath: string): Promise<number> {
       const stat = await fs.stat(full).catch(() => null);
       if (stat?.isDirectory()) {
         const isEmpty = await prune(full);
-        if (isEmpty && !ALWAYS_PROTECTED.has(entry)) {
+        if (isEmpty && !PROTECTED_ROOT_DIRS.has(entry)) {
           await fs.rmdir(full);
           removed++;
         }
