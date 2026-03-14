@@ -2,13 +2,13 @@
  * Project CRUD routes.
  */
 
-import { exec } from "child_process";
+import { execFile } from "child_process";
 import { promisify } from "util";
 import { existsSync, statSync } from "fs";
 import * as storage from "../storage.js";
 import type { FastifyInstance } from "fastify";
 
-const execAsync = promisify(exec);
+const execFileAsync = promisify(execFile);
 
 export async function registerProjectRoutes(app: FastifyInstance): Promise<void> {
   // POST /projects
@@ -114,7 +114,8 @@ export async function registerProjectRoutes(app: FastifyInstance): Promise<void>
       }
 
       try {
-        const { stdout } = await execAsync("git rev-parse --abbrev-ref HEAD", { cwd });
+        // execFile avoids shell injection: cwd is a validated directory, no shell is spawned
+        const { stdout } = await execFileAsync("git", ["rev-parse", "--abbrev-ref", "HEAD"], { cwd });
         return { branch: stdout.trim() };
       } catch {
         return { branch: null };

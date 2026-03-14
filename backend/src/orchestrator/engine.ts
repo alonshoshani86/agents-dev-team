@@ -542,6 +542,8 @@ export function pauseTask(taskId: string): boolean {
 export function resumeTask(taskId: string): boolean {
   const ex = runningTasks.get(taskId);
   if (!ex) return false;
+  // Only resume if the task is actually paused; otherwise the caller gets a misleading 200
+  if (!ex.paused) return false;
   ex.resume();
   updateTask(ex.projectId, taskId, { status: "running", paused: false });
   return true;

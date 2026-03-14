@@ -2,7 +2,7 @@
  * WebSocket routes: project event stream and agent streaming with tool approval.
  */
 
-import { createRequire } from "module";
+import path from "path";
 import * as storage from "../storage.js";
 import { createRunner, AGENT_NAMES } from "../agents/registry.js";
 import type { FastifyInstance } from "fastify";
@@ -113,17 +113,29 @@ async function executeTool(
 
   const { action_type, details } = tool;
 
+  /**
+   * Resolve and validate that a relative path from a tool call stays within filesDir.
+   * Returns the resolved absolute path, or null if the path escapes the sandbox.
+   */
+  function resolveContained(filesDir: string, relativePath: string): string | null {
+    const resolved = path.resolve(filesDir, relativePath);
+    if (resolved !== filesDir && !resolved.startsWith(filesDir + path.sep)) return null;
+    return resolved;
+  }
+
   try {
     if (action_type === "write_file") {
       const filesDir = await storage.projectFilesDir(projectId);
-      const targetPath = `${filesDir}/${details.path}`;
+      const targetPath = resolveContained(filesDir, String(details.path ?? ""));
+      if (!targetPath) return { success: false, output: `Path escapes project directory: ${details.path}` };
       await storage.writeTextFile(targetPath, String(details.content ?? ""));
       return { success: true, output: `Created ${details.path}` };
     }
 
     if (action_type === "edit_file") {
       const filesDir = await storage.projectFilesDir(projectId);
-      const targetPath = `${filesDir}/${details.path}`;
+      const targetPath = resolveContained(filesDir, String(details.path ?? ""));
+      if (!targetPath) return { success: false, output: `Path escapes project directory: ${details.path}` };
       const existing = await storage.readTextFile(targetPath);
       if (existing === null) return { success: false, output: `File not found: ${details.path}` };
       await storage.writeTextFile(targetPath, String(details.diff ?? ""));
@@ -146,7 +158,8 @@ async function executeTool(
 
     if (action_type === "delete_file") {
       const filesDir = await storage.projectFilesDir(projectId);
-      const targetPath = `${filesDir}/${details.path}`;
+      const targetPath = resolveContained(filesDir, String(details.path ?? ""));
+      if (!targetPath) return { success: false, output: `Path escapes project directory: ${details.path}` };
       const deleted = await storage.deletePath(targetPath);
       if (deleted) return { success: true, output: `Deleted ${details.path}` };
       return { success: false, output: `File not found: ${details.path}` };
