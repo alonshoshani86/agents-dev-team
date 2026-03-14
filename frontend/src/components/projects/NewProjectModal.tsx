@@ -56,74 +56,77 @@ export function NewProjectModal({ onClose }: Props) {
   }
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div className="modal" onClick={(e) => e.stopPropagation()}>
-        <h2>New Project</h2>
-        <form onSubmit={handleSubmit}>
-          <div className="form-group">
-            <label>Project Name</label>
-            <input
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="My Awesome Project"
-              autoFocus
-            />
-          </div>
-          <div className="form-group">
-            <label>Description</label>
-            <textarea
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              placeholder="What is this project about?"
-            />
-          </div>
-          <div className="form-group">
-            <label>Project Paths</label>
-            <span className="form-hint">Point to local folders (e.g. backend, frontend repos)</span>
-            {paths.map((p, i) => (
-              <div key={i} className="path-row">
-                <input
-                  className="path-label"
-                  value={p.label}
-                  onChange={(e) => updatePath(i, "label", e.target.value)}
-                  placeholder="Label (e.g. backend)"
-                />
-                <input
-                  className="path-value"
-                  value={p.path}
-                  onChange={(e) => updatePath(i, "path", e.target.value)}
-                  placeholder="/Users/you/git/my-repo"
-                />
-                <button
-                  type="button"
-                  className="btn-browse"
-                  onClick={() => setBrowsingIndex(i)}
-                  title="Browse folders"
-                >
-                  &#128193;
-                </button>
-                {paths.length > 1 && (
-                  <button type="button" className="path-remove" onClick={() => removePath(i)}>
-                    &times;
+    <>
+      <div className="modal-overlay" onClick={onClose}>
+        <div className="modal" onClick={(e) => e.stopPropagation()}>
+          <h2>New Project</h2>
+          <form onSubmit={handleSubmit}>
+            <div className="form-group">
+              <label>Project Name</label>
+              <input
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="My Awesome Project"
+                autoFocus
+              />
+            </div>
+            <div className="form-group">
+              <label>Description</label>
+              <textarea
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                placeholder="What is this project about?"
+              />
+            </div>
+            <div className="form-group">
+              <label>Project Paths</label>
+              <span className="form-hint">Point to local folders (e.g. backend, frontend repos)</span>
+              {paths.map((p, i) => (
+                <div key={i} className="path-row">
+                  <input
+                    className="path-label"
+                    value={p.label}
+                    onChange={(e) => updatePath(i, "label", e.target.value)}
+                    placeholder="Label (e.g. backend)"
+                  />
+                  <input
+                    className="path-value"
+                    value={p.path}
+                    onChange={(e) => updatePath(i, "path", e.target.value)}
+                    placeholder="/Users/you/git/my-repo"
+                  />
+                  <button
+                    type="button"
+                    className="btn-browse"
+                    onClick={() => setBrowsingIndex(i)}
+                    title="Browse folders"
+                  >
+                    &#128193;
                   </button>
-                )}
-              </div>
-            ))}
-            <button type="button" className="btn-link" onClick={addPath}>
-              + Add path
-            </button>
-          </div>
-          <div className="modal-actions">
-            <button type="button" className="btn btn-secondary" onClick={onClose}>
-              Cancel
-            </button>
-            <button type="submit" className="btn btn-primary" disabled={loading || !name.trim()}>
-              {loading ? "Creating..." : "Create Project"}
-            </button>
-          </div>
-        </form>
+                  {paths.length > 1 && (
+                    <button type="button" className="path-remove" onClick={() => removePath(i)}>
+                      &times;
+                    </button>
+                  )}
+                </div>
+              ))}
+              <button type="button" className="btn-link" onClick={addPath}>
+                + Add path
+              </button>
+            </div>
+            <div className="modal-actions">
+              <button type="button" className="btn btn-secondary" onClick={onClose}>
+                Cancel
+              </button>
+              <button type="submit" className="btn btn-primary" disabled={loading || !name.trim()}>
+                {loading ? "Creating..." : "Create Project"}
+              </button>
+            </div>
+          </form>
+        </div>
       </div>
 
+      {/* Rendered as a sibling — not inside modal-overlay — so backdrop clicks don't bubble up and close NewProjectModal */}
       {browsingIndex !== null && (
         <FolderPicker
           initialPath={paths[browsingIndex]?.path || undefined}
@@ -131,6 +134,6 @@ export function NewProjectModal({ onClose }: Props) {
           onClose={() => setBrowsingIndex(null)}
         />
       )}
-    </div>
+    </>
   );
 }
