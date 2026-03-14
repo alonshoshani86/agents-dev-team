@@ -22,6 +22,7 @@ import { registerAgentRoutes } from "./routes/agents.js";
 import { registerTaskRoutes } from "./routes/tasks.js";
 import { registerFileRoutes } from "./routes/files.js";
 import { registerWebSocketRoutes, broadcast } from "./routes/websocket.js";
+import { registerCleanupRoutes } from "./routes/cleanup.js";
 import * as storage from "./storage.js";
 
 const PORT = parseInt(process.env.PORT ?? "8001", 10);
@@ -86,12 +87,8 @@ async function main() {
   await registerConfigRoutes(app);
   await registerAgentRoutes(app);
   await registerTaskRoutes(app, broadcast);
-  await app.register(
-    async (instance) => {
-      await registerFileRoutes(instance);
-    },
-    { prefix: "/files" },
-  );
+  await registerFileRoutes(app);
+  await registerCleanupRoutes(app);
   await registerWebSocketRoutes(app);
 
   // --- Start ---

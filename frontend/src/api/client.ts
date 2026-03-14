@@ -11,7 +11,10 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({ detail: res.statusText }));
-    throw new Error(err.detail || res.statusText);
+    // Include the machine-readable `error` code (if present) in the thrown message
+    // so callers can detect specific error types like "scan_expired" reliably.
+    const message = err.error ? `${err.error}: ${err.detail || res.statusText}` : (err.detail || res.statusText);
+    throw new Error(message);
   }
   return res.json();
 }
@@ -91,6 +94,14 @@ export const api = {
     request<any[]>(`/projects/${projectId}/tasks/${taskId}/history`),
   taskArtifacts: (projectId: string, taskId: string) =>
     request<any[]>(`/projects/${projectId}/tasks/${taskId}/artifacts`),
+  artifactContent: (projectId: string, taskId: string, artifactType: string, run?: string | number) =>
+    request<{ artifact_type: string; run: string | null; content: string }>(
+      `/projects/${projectId}/tasks/${taskId}/artifacts/${artifactType}/content${run !== undefined ? `?run=${run}` : ""}`
+    ),
+  artifactRuns: (projectId: string, taskId: string, artifactType: string) =>
+    request<{ artifact_type: string; run_count: number; runs: { run: number; agent: string; timestamp: string }[] }>(
+      `/projects/${projectId}/tasks/${taskId}/artifacts/${artifactType}/runs`
+    ),
   updateArtifact: (projectId: string, taskId: string, artifactType: string, content: string) =>
     request<any>(`/projects/${projectId}/tasks/${taskId}/artifacts/${artifactType}`, {
       method: "PUT",
@@ -116,4 +127,13 @@ export const api = {
     request<{ path: string; parent: string | null; dirs: { name: string; path: string }[] }>(
       `/browse${path ? `?path=${encodeURIComponent(path)}` : ""}`
     ),
+
+  // Cleanup
+  scanUnusedFiles: (projectId: string) =>
+    request<import("../types").CleanupScanResult>(`/projects/${projectId}/cleanup/scan`),
+  deleteUnusedFiles: (projectId: string, scanId: string, paths: string[]) =>
+    request<import("../types").CleanupDeleteResult>(`/projects/${projectId}/cleanup/delete`, {
+      method: "POST",
+      body: JSON.stringify({ scan_id: scanId, paths }),
+    }),
 };
