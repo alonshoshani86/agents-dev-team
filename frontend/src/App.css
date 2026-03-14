@@ -1516,6 +1516,15 @@ body {
 .pipeline-status-badge.paused { background: rgba(245, 158, 11, 0.2); color: var(--warning); }
 .pipeline-status-badge.cancelled { background: rgba(113, 113, 122, 0.2); color: var(--text-muted); }
 
+.pipeline-branch-badge {
+  font-size: 12px;
+  color: var(--text-muted);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-family: monospace;
+}
+
 .pipeline-active-agent {
   font-size: 12px;
   color: var(--working);

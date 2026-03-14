@@ -231,6 +231,9 @@ export function PipelineView() {
         <div className="pipeline-task-info">
           <span className={`pipeline-status-badge ${task.status}`}>{task.status}</span>
           <h3>{task.title}</h3>
+          {task.branch_name && (
+            <span className="pipeline-branch-badge">&#9741; {task.branch_name}</span>
+          )}
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
           <div className="view-mode-toggle">
@@ -413,45 +416,37 @@ export function PipelineView() {
           )}
         </div>
 
-        {/* Agent chooser — shown after each agent completes */}
-        {pipelineChoosingAgent && (
-          <div className="agent-chooser">
-            <div className="agent-chooser-label">Choose next agent:</div>
-            <div className="agent-chooser-buttons">
-              {PIPELINE_AGENTS.map((agent) => (
-                <button
-                  key={agent.name}
-                  className={`agent-chooser-btn ${agent.name === suggestedNextAgent ? "suggested" : ""}`}
-                  onClick={() => handleChooseAgent(agent.name)}
-                >
-                  {agent.display}
-                  {agent.name === suggestedNextAgent && <span className="suggested-badge">suggested</span>}
-                </button>
-              ))}
+        {/* Run Agent / Choose Next Agent bar */}
+        {showRunBar && (
+          <div className="agent-run-bar">
+            <span className="agent-run-label">
+              {pipelineChoosingAgent || task.status === "choosing_agent" ? "Next agent:" : "Run agent:"}
+            </span>
+            {PIPELINE_AGENTS.map((agent) => (
               <button
-                className="agent-chooser-btn done"
+                key={agent.name}
+                className={`btn-run-agent ${agent.name === suggestedNextAgent ? "suggested" : ""}`}
+                onClick={() => {
+                  if (pipelineChoosingAgent || task.status === "choosing_agent") {
+                    handleChooseAgent(agent.name);
+                  } else {
+                    handleRunAgent(agent.name);
+                  }
+                }}
+                disabled={!!startingAgent}
+              >
+                {startingAgent === agent.name ? "Starting..." : agent.display}
+                {agent.name === suggestedNextAgent && <span className="suggested-badge">suggested</span>}
+              </button>
+            ))}
+            {(pipelineChoosingAgent || task.status === "choosing_agent") && (
+              <button
+                className="btn-run-agent done"
                 onClick={() => handleChooseAgent(null)}
               >
                 Finish Task
               </button>
-            </div>
-          </div>
-        )}
-
-        {/* Run Agent buttons — shown when task is not actively running */}
-        {showRunBar && (
-          <div className="agent-run-bar">
-            <span className="agent-run-label">Run agent:</span>
-            {PIPELINE_AGENTS.map((agent) => (
-              <button
-                key={agent.name}
-                className="btn-run-agent"
-                onClick={() => handleRunAgent(agent.name)}
-                disabled={!!startingAgent}
-              >
-                {startingAgent === agent.name ? "Starting..." : agent.display}
-              </button>
-            ))}
+            )}
           </div>
         )}
 
@@ -487,7 +482,7 @@ export function PipelineView() {
                   {askingAgent ? "Thinking..." : "Send"}
                 </button>
               )}
-              {pipelineWaitingInput && (
+              {(pipelineWaitingInput || task.status === "waiting_input") && (
                 <button
                   className="btn-resume-pipeline"
                   onClick={handleSendInput}

@@ -307,9 +307,29 @@ export const useStore = create<AppState>((set, get) => ({
       const task = s.tasks.find((t) => t.id === taskId);
       const agentTab = task?.current_agent || ALL_AGENTS.find(a => terminals[a].messages.length > 0) || ALL_AGENTS[0];
 
+      // Scan for [NEXT:agent] in assistant messages to restore suggested agent
+      let suggestedNext: string | null = null;
+      for (const a of [...ALL_AGENTS].reverse()) {
+        const msgs = terminals[a]?.messages || [];
+        for (let i = msgs.length - 1; i >= 0; i--) {
+          if (msgs[i].role === "assistant") {
+            const match = msgs[i].content.match(/\[NEXT:(\w+)\]/i);
+            if (match) {
+              const valid = ["product", "architect", "dev", "test", "uxui"];
+              if (valid.includes(match[1].toLowerCase())) {
+                suggestedNext = match[1].toLowerCase();
+              }
+            }
+            break;
+          }
+        }
+        if (suggestedNext) break;
+      }
+
       set({
         agentTerminals: terminals,
         pipelineAgentTab: agentTab,
+        ...(suggestedNext ? { suggestedNextAgent: suggestedNext } : {}),
       });
     } catch {
       // ignore — terminals just won't be restored

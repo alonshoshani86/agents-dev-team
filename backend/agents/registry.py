@@ -180,8 +180,8 @@ def save_agent_config(project_id: str, agent_name: str, overrides: dict) -> None
         f.write(frontmatter.dumps(post))
 
 
-def create_runner(project_id: str, agent_name: str) -> AgentRunner:
-    """Create an AgentRunner from config."""
+def create_runner(project_id: str, agent_name: str, cwd_override: Optional[str] = None) -> AgentRunner:
+    """Create an AgentRunner from config. cwd_override (e.g. worktree path) takes precedence."""
     config = get_agent_config(project_id, agent_name)
 
     # Build context from project
@@ -224,9 +224,9 @@ def create_runner(project_id: str, agent_name: str) -> AgentRunner:
         if files_context:
             system_prompt += "\n\n<project-files>\n" + files_context + "\n</project-files>"
 
-    # Determine working directory from project paths
-    cwd = None
-    if project_data:
+    # Determine working directory: worktree override > project paths
+    cwd = cwd_override
+    if not cwd and project_data:
         proj_paths = project_data.get("paths", [])
         if not proj_paths and project_data.get("repo_path"):
             proj_paths = [{"path": project_data["repo_path"]}]

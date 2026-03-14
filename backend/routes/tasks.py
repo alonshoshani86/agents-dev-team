@@ -107,6 +107,15 @@ async def delete_task(project_id: str, task_id: str):
     task_dir = storage.project_tasks_dir(project_id) / task_id
     if not task_dir.exists():
         raise HTTPException(status_code=404, detail="Task not found")
+
+    # Clean up git worktree if one was created for this task
+    task = storage.read_json(task_dir / "task.json")
+    if task and task.get("worktree_path"):
+        import worktree as wt
+        repo_path = storage.get_repo_path(project_id)
+        if repo_path:
+            await wt.remove_worktree(repo_path, task_id)
+
     storage.delete_path(task_dir)
     return {"deleted": True}
 

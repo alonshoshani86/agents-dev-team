@@ -22,6 +22,8 @@ export interface Task {
   current_agent: string | null;
   pipeline_id: string | null;
   created_at: string;
+  worktree_path?: string | null;
+  branch_name?: string | null;
 }
 
 export interface Agent {

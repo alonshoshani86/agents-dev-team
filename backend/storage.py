@@ -157,6 +157,19 @@ def project_all_paths(project_id: str) -> List[dict]:
     return [p for p in paths if p.get("path") and Path(p["path"]).is_dir()]
 
 
+def get_repo_path(project_id: str) -> Optional[str]:
+    """Get the first valid filesystem path from a project's config."""
+    project_data = read_json(project_json_path(project_id))
+    if not project_data:
+        return None
+    paths = project_data.get("paths", [])
+    for pp in paths:
+        p = pp.get("path", "")
+        if p and Path(p).is_dir():
+            return p
+    return None
+
+
 def config_path() -> Path:
     _ensure_data_dir()
     return DATA_DIR / "config.json"

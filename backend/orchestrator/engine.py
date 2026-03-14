@@ -3,11 +3,16 @@
 from __future__ import annotations
 
 import asyncio
+import logging
+import os
 import re
 from typing import Any, Callable, Coroutine, Dict, List, Optional
 
 import storage
+import worktree as wt
 from agents.registry import create_runner
+
+logger = logging.getLogger(__name__)
 from orchestrator.models import (
     append_history, create_artifact, list_artifacts,
     append_terminal_message, update_last_terminal_message,
@@ -34,6 +39,7 @@ class TaskExecution:
         self.cancelled = False
         self.extra_context: Optional[str] = None  # injected instructions
         self.next_agent_choice: Optional[str] = None  # user's choice for next agent
+        self.worktree_path: Optional[str] = None  # git worktree directory for this task
         self._current_runner = None  # reference to active AgentRunner for cancellation
         self._pause_event = asyncio.Event()
         self._pause_event.set()  # not paused initially
@@ -76,6 +82,21 @@ def _has_active_agent(project_id: str, exclude_task_id: Optional[str] = None) ->
     return None
 
 
+async def _setup_worktree(project_id: str, task_id: str) -> tuple[Optional[str], Optional[str]]:
+    """Create a git worktree for a task. Returns (worktree_path, branch_name)."""
+    repo_path = storage.get_repo_path(project_id)
+    if not repo_path or not wt.is_git_repo(repo_path):
+        return None, None
+
+    success, result, branch = await wt.create_worktree(repo_path, task_id)
+    if success:
+        logger.info("Task %s worktree ready: %s (branch: %s)", task_id, result, branch)
+        return result, branch
+    else:
+        logger.warning("Worktree creation failed for task %s: %s", task_id, result)
+        return None, None
+
+
 async def start_pipeline(
     project_id: str,
     task_id: str,
@@ -102,13 +123,22 @@ async def start_pipeline(
         return
 
     execution = TaskExecution(project_id, task_id, pipeline)
+
+    # Create git worktree for task isolation
+    worktree_path, branch_name = await _setup_worktree(project_id, task_id)
+    execution.worktree_path = worktree_path
+
     _running_tasks[task_id] = execution
 
-    # Update task status
-    _update_task(project_id, task_id, {
+    # Update task status (include worktree info)
+    task_updates = {
         "status": "running",
         "pipeline_id": pipeline_id,
-    })
+    }
+    if worktree_path:
+        task_updates["worktree_path"] = worktree_path
+        task_updates["branch_name"] = branch_name
+    _update_task(project_id, task_id, task_updates)
 
     if on_event:
         await on_event({
@@ -252,8 +282,8 @@ async def _execute_agent(
         user_message += f"\n\nAdditional instructions:\n{execution.extra_context}"
         execution.extra_context = None  # consume once
 
-    # Run the agent
-    runner = create_runner(execution.project_id, agent_name)
+    # Run the agent (use worktree as cwd if available)
+    runner = create_runner(execution.project_id, agent_name, cwd_override=execution.worktree_path)
     execution._current_runner = runner
     full_response = ""
 
@@ -592,8 +622,13 @@ async def ask_agent(
                 "agent": agent_name,
             })
 
+        # Use worktree path if available
+        cwd_override = task.get("worktree_path")
+        if cwd_override and not os.path.isdir(cwd_override):
+            cwd_override = None
+
         logger.info(f"[ask_agent] Running {agent_name} for task {task_id}")
-        runner = create_runner(project_id, agent_name)
+        runner = create_runner(project_id, agent_name, cwd_override=cwd_override)
         full_response = ""
 
         async for chunk in runner.stream(user_message, context=context):
@@ -661,6 +696,22 @@ async def run_single_agent(
     pipeline = {"name": "manual", "start_agent": agent_name}
     execution = TaskExecution(project_id, task_id, pipeline)
     execution.extra_context = extra_context
+
+    # Reuse existing worktree or create one
+    task = storage.read_json(
+        storage.project_tasks_dir(project_id) / task_id / "task.json"
+    )
+    if task and task.get("worktree_path") and os.path.isdir(task["worktree_path"]):
+        execution.worktree_path = task["worktree_path"]
+    else:
+        worktree_path, branch_name = await _setup_worktree(project_id, task_id)
+        execution.worktree_path = worktree_path
+        if worktree_path:
+            _update_task(project_id, task_id, {
+                "worktree_path": worktree_path,
+                "branch_name": branch_name,
+            })
+
     _running_tasks[task_id] = execution
 
     _update_task(project_id, task_id, {
