@@ -39,7 +39,12 @@ export function CostBreakdownPanel({
 
   const agentsWithCost = Object.entries(merged).filter(([, c]) => c > 0);
 
-  if (agentsWithCost.length === 0 && totalCostUSD <= 0) return null;
+  // Use live sum as denominator during streaming so bar widths are non-zero
+  // before the final usage_update event updates task.total_cost_usd.
+  const liveTotalFromUsage = Object.values(liveUsage).reduce((sum, u) => sum + u.costUSD, 0);
+  const effectiveTotalCostUSD = Math.max(liveTotalFromUsage, totalCostUSD);
+
+  if (agentsWithCost.length === 0 && effectiveTotalCostUSD <= 0) return null;
 
   return (
     <div
@@ -64,7 +69,7 @@ export function CostBreakdownPanel({
               key={agent}
               agentName={agent}
               costUSD={cost}
-              totalCostUSD={totalCostUSD}
+              totalCostUSD={effectiveTotalCostUSD}
               color={AGENT_COLORS[agent] ?? DEFAULT_COLOR}
               isLive={!!liveUsage[agent]}
             />
