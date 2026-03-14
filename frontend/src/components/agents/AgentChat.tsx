@@ -128,7 +128,6 @@ const ChatInput = memo(function ChatInput({
   onSubmit: (e: React.FormEvent) => void;
   onKeyDown: (e: React.KeyboardEvent) => void;
 }) {
-  const disabled = isStreaming || pendingApproval;
   return (
     <form className="terminal-input-area" onSubmit={onSubmit}>
       <span className="terminal-input-prompt">&gt;</span>
@@ -142,11 +141,10 @@ const ChatInput = memo(function ChatInput({
             ? "Approve or deny the action above..."
             : `Message ${agentDisplayName}...`
         }
-        disabled={disabled}
         rows={1}
       />
-      {/* Send button always in DOM — only disabled, never removed */}
-      <button type="submit" className="terminal-send-btn" disabled={disabled}>
+      {/* Send button is always active — never disabled */}
+      <button type="submit" className="terminal-send-btn">
         Send
       </button>
     </form>
@@ -186,16 +184,14 @@ export function AgentChat({ projectId, agentName, agentDisplayName }: Props) {
     }
   }, [completedMessages, streamingContent, pendingApproval]);
 
-  // Auto-focus after streaming finishes or agent changes
+  // Auto-focus after agent changes or state transitions
   useEffect(() => {
-    if (!isStreaming) {
-      inputRef.current?.focus();
-    }
-  }, [isStreaming, agentName, pendingApproval]);
+    inputRef.current?.focus();
+  }, [agentName]);
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!input.trim() || isStreaming) return;
+    if (!input.trim()) return;
     sendMessage(input.trim());
     setInput("");
   }
