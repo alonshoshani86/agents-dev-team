@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 from orchestrator.models import (
     append_history, create_artifact, list_artifacts,
     append_terminal_message, update_last_terminal_message,
-    clear_agent_terminal,
+    clear_agent_terminal, get_artifact_content,
 )
 from orchestrator.pipelines import get_pipeline
 
@@ -47,6 +47,9 @@ class TaskExecution:
         # Permission handling
         self.permissions_enabled = True  # use SDK bridge with permission UI
         self._pending_permissions: Dict[str, asyncio.Future] = {}  # id -> Future[response]
+        # Per-agent run tracking (for terminal separator and artifact tagging)
+        self._terminal_run_counts: Dict[str, int] = {}
+        self._current_run_for_agent: Dict[str, int] = {}
 
     def resolve_permission(self, permission_id: str, response: dict) -> bool:
         """Resolve a pending permission request with a user response."""
@@ -238,11 +241,21 @@ async def _execute_agent(
             "iteration": execution.iteration,
         })
 
-    # Clear previous terminal messages for this agent before starting fresh
-    clear_agent_terminal(execution.project_id, execution.task_id, agent_name)
+    # Track per-agent run count — increment on each call, never clear the log
+    agent_run = execution._terminal_run_counts.get(agent_name, 0) + 1
+    execution._terminal_run_counts[agent_name] = agent_run
+    execution._current_run_for_agent[agent_name] = agent_run
+
+    agent_display = {"product": "Product", "architect": "Architect", "dev": "Dev", "test": "Test", "uxui": "UX/UI"}.get(agent_name, agent_name)
+
+    if agent_run > 1:
+        # Insert a visual separator before the new run's messages
+        append_terminal_message(
+            execution.project_id, execution.task_id, agent_name, "system",
+            f"--- Re-run #{agent_run} ---",
+        )
 
     # Save "starting" system message to terminal log
-    agent_display = {"product": "Product", "architect": "Architect", "dev": "Dev", "test": "Test", "uxui": "UX/UI"}.get(agent_name, agent_name)
     append_terminal_message(execution.project_id, execution.task_id, agent_name, "system", f"Starting {agent_display} agent...")
 
     # Show which artifacts are being passed as context
@@ -454,16 +467,22 @@ async def _execute_agent(
 
 
 def _build_context(execution: TaskExecution, task: dict) -> str:
-    """Build context for an agent from previous artifacts."""
+    """Build context for an agent from previous artifacts (latest run only)."""
     parts = []
 
-    # Add previous artifacts as context
+    # Add previous artifacts as context — use only the latest run so downstream
+    # agents are not confused by earlier re-run content.
     artifacts = list_artifacts(execution.project_id, execution.task_id)
     if artifacts:
         parts.append("Previous artifacts from this task:")
         for art in artifacts:
-            parts.append(f"\n--- {art.get('type', 'unknown')} (by {art.get('agent', 'unknown')}) ---")
-            content = art.get("content", "")
+            artifact_type = art.get("type", "unknown")
+            # Fetch only the latest run's content
+            latest_content = get_artifact_content(
+                execution.project_id, execution.task_id, artifact_type, run="latest"
+            )
+            content = latest_content if latest_content is not None else art.get("content", "")
+            parts.append(f"\n--- {artifact_type} (by {art.get('agent', 'unknown')}) ---")
             if len(content) > 10000:
                 content = content[:10000] + "\n... (truncated)"
             parts.append(content)

@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 from typing import Optional
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
 
 import storage
@@ -323,6 +323,62 @@ async def task_history(project_id: str, task_id: str):
 async def task_artifacts(project_id: str, task_id: str):
     from orchestrator.models import list_artifacts
     return list_artifacts(project_id, task_id)
+
+
+@router.get("/projects/{project_id}/tasks/{task_id}/artifacts/{artifact_type}/content")
+async def get_artifact_content_route(
+    project_id: str,
+    task_id: str,
+    artifact_type: str,
+    run: Optional[str] = Query(default=None, description="Run selector: integer, 'latest', or omit for all"),
+):
+    """Get artifact content with optional run filter.
+
+    ?run=latest  — latest run only
+    ?run=1       — specific run number
+    (omit)       — all runs (raw content)
+    """
+    from orchestrator.models import get_artifact_content
+
+    run_param = None
+    if run is not None:
+        if run == "latest":
+            run_param = "latest"
+        else:
+            try:
+                run_param = int(run)
+            except ValueError:
+                raise HTTPException(status_code=400, detail="Invalid run parameter")
+
+    content = get_artifact_content(project_id, task_id, artifact_type, run=run_param)
+    if content is None:
+        raise HTTPException(status_code=404, detail="Artifact not found")
+    return {"artifact_type": artifact_type, "run": run, "content": content}
+
+
+@router.get("/projects/{project_id}/tasks/{task_id}/artifacts/{artifact_type}/runs")
+async def get_artifact_runs(project_id: str, task_id: str, artifact_type: str):
+    """Return run metadata list parsed from artifact file delimiters."""
+    from orchestrator.models import get_artifact_content, split_runs
+    import storage as _storage
+
+    artifacts_dir = _storage.project_tasks_dir(project_id) / task_id / "artifacts"
+    content_path = artifacts_dir / f"{artifact_type}.md"
+    if not content_path.exists():
+        raise HTTPException(status_code=404, detail="Artifact not found")
+
+    raw = _storage.read_text_file(content_path)
+    runs = split_runs(raw)
+
+    run_meta = [
+        {"run": r["run"], "agent": r["agent"], "timestamp": r["timestamp"]}
+        for r in runs
+    ]
+    return {
+        "artifact_type": artifact_type,
+        "run_count": len(runs),
+        "runs": run_meta,
+    }
 
 
 class UpdateArtifactRequest(BaseModel):

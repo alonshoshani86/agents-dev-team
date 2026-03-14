@@ -87,6 +87,14 @@ export const api = {
     request<any[]>(`/projects/${projectId}/tasks/${taskId}/history`),
   taskArtifacts: (projectId: string, taskId: string) =>
     request<any[]>(`/projects/${projectId}/tasks/${taskId}/artifacts`),
+  artifactContent: (projectId: string, taskId: string, artifactType: string, run?: string | number) =>
+    request<{ artifact_type: string; run: string | null; content: string }>(
+      `/projects/${projectId}/tasks/${taskId}/artifacts/${artifactType}/content${run !== undefined ? `?run=${run}` : ""}`
+    ),
+  artifactRuns: (projectId: string, taskId: string, artifactType: string) =>
+    request<{ artifact_type: string; run_count: number; runs: { run: number; agent: string; timestamp: string }[] }>(
+      `/projects/${projectId}/tasks/${taskId}/artifacts/${artifactType}/runs`
+    ),
   updateArtifact: (projectId: string, taskId: string, artifactType: string, content: string) =>
     request<any>(`/projects/${projectId}/tasks/${taskId}/artifacts/${artifactType}`, {
       method: "PUT",
