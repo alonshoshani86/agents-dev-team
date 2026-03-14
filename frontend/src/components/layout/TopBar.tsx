@@ -7,20 +7,25 @@ export function TopBar() {
   const activeView = useStore((s) => s.activeView);
   const setActiveView = useStore((s) => s.setActiveView);
   const activeProjectId = useStore((s) => s.activeProjectId);
-  const [branch, setBranch] = useState<string | null>(null);
+  const activeTaskId = useStore((s) => s.activeTaskId);
+  const tasks = useStore((s) => s.tasks);
+  const [repoBranch, setRepoBranch] = useState<string | null>(null);
 
   useEffect(() => {
     if (!activeProjectId) {
-      setBranch(null);
+      setRepoBranch(null);
       return;
     }
-    api.getGitBranch(activeProjectId).then((res) => setBranch(res.branch)).catch(() => setBranch(null));
-    // Poll every 10s to keep branch up to date
+    api.getGitBranch(activeProjectId).then((res) => setRepoBranch(res.branch)).catch(() => setRepoBranch(null));
     const interval = setInterval(() => {
-      api.getGitBranch(activeProjectId).then((res) => setBranch(res.branch)).catch(() => setBranch(null));
+      api.getGitBranch(activeProjectId).then((res) => setRepoBranch(res.branch)).catch(() => setRepoBranch(null));
     }, 10_000);
     return () => clearInterval(interval);
   }, [activeProjectId]);
+
+  // Show task branch if active task has a worktree, otherwise show repo branch
+  const activeTask = tasks.find((t) => t.id === activeTaskId);
+  const branch = activeTask?.branch_name || repoBranch;
 
   return (
     <div className="topbar">
