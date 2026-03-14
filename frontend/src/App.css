@@ -773,6 +773,40 @@ body {
   opacity: 0.4;
 }
 
+/* Send button — always visible, only disabled during streaming */
+.terminal-send-btn {
+  flex-shrink: 0;
+  padding: 4px 12px;
+  background: var(--accent);
+  color: #fff;
+  border: none;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.terminal-send-btn:hover:not(:disabled) {
+  background: var(--accent-hover);
+}
+
+.terminal-send-btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+/* Plain pre for live streaming — no markdown parsing overhead */
+.terminal-streaming-pre {
+  font-family: "JetBrains Mono", "Fira Code", "Cascadia Code", monospace;
+  font-size: 13px;
+  color: #e6edf3;
+  white-space: pre-wrap;
+  word-break: break-word;
+  margin: 0;
+  line-height: 1.6;
+}
+
 .terminal-input-buttons {
   display: flex;
   gap: 6px;
@@ -1619,6 +1653,20 @@ body {
 .btn-run-agent:disabled {
   opacity: 0.5;
   cursor: default;
+}
+.btn-run-agent.suggested {
+  border-color: var(--accent);
+  background: rgba(56, 139, 253, 0.15);
+  color: var(--accent);
+}
+.btn-run-agent .suggested-badge {
+  font-size: 9px;
+  margin-left: 4px;
+  opacity: 0.7;
+}
+.btn-run-agent.done {
+  border-color: #238636;
+  color: #3fb950;
 }
 
 /* Pipeline Tabs */

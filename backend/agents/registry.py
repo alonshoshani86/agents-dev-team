@@ -106,18 +106,46 @@ AGENT_NAMES = ["product", "architect", "dev", "test", "uxui"]
 
 
 def _load_default_config(agent_name: str) -> dict:
-    """Load the built-in default config for an agent."""
-    path = DEFAULTS_DIR / f"{agent_name}.json"
-    if path.exists():
-        with open(path) as f:
+    """Load the built-in default config for an agent. Prefers .md, falls back to .json."""
+    import frontmatter  # lazy import — only needed here
+
+    md_path = DEFAULTS_DIR / f"{agent_name}.md"
+    if md_path.exists():
+        post = frontmatter.load(str(md_path))
+        return {
+            "name": post.get("name", agent_name),
+            "display_name": post.get("display_name", agent_name.title()),
+            "model": post.get("model"),
+            "system_prompt": post.content,
+        }
+
+    # Backward compat: fall back to .json
+    json_path = DEFAULTS_DIR / f"{agent_name}.json"
+    if json_path.exists():
+        with open(json_path) as f:
             return json.load(f)
+
     return {"name": agent_name, "display_name": agent_name.title(), "system_prompt": "", "model": None}
 
 
 def _load_project_config(project_id: str, agent_name: str) -> Optional[dict]:
-    """Load project-specific agent config overrides."""
-    path = storage.project_agents_dir(project_id) / f"{agent_name}.json"
-    return storage.read_json(path)
+    """Load project-specific agent config overrides. Prefers .md, falls back to .json."""
+    import frontmatter  # lazy import
+
+    agents_dir = storage.project_agents_dir(project_id)
+
+    md_path = agents_dir / f"{agent_name}.md"
+    if md_path.exists():
+        post = frontmatter.load(str(md_path))
+        return {
+            "system_prompt": post.content or None,
+            "model": post.get("model"),
+            "display_name": post.get("display_name"),
+        }
+
+    # Backward compat: existing .json project overrides still work
+    json_path = agents_dir / f"{agent_name}.json"
+    return storage.read_json(json_path)
 
 
 def get_agent_config(project_id: str, agent_name: str) -> dict:
@@ -138,9 +166,18 @@ def get_agent_config(project_id: str, agent_name: str) -> dict:
 
 
 def save_agent_config(project_id: str, agent_name: str, overrides: dict) -> None:
-    """Save project-specific agent config overrides."""
-    path = storage.project_agents_dir(project_id) / f"{agent_name}.json"
-    storage.write_json(path, overrides)
+    """Save project-specific agent config overrides as .md with YAML frontmatter."""
+    import frontmatter  # lazy import
+
+    agents_dir = storage.project_agents_dir(project_id)
+    path = agents_dir / f"{agent_name}.md"
+
+    metadata = {k: v for k, v in overrides.items() if k != "system_prompt"}
+    content = overrides.get("system_prompt", "")
+
+    post = frontmatter.Post(content, **metadata)
+    with open(path, "w") as f:
+        f.write(frontmatter.dumps(post))
 
 
 def create_runner(project_id: str, agent_name: str) -> AgentRunner:

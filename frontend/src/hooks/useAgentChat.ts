@@ -7,11 +7,17 @@ interface Message {
 }
 
 export function useAgentChat(projectId: string | null, agentName: string | null) {
-  const [messages, setMessages] = useState<Message[]>([]);
-  const [streaming, setStreaming] = useState(false);
+  // completedMessages only changes on "done" / "error" / "tool_result" — not on every chunk
+  const [completedMessages, setCompletedMessages] = useState<Message[]>([]);
+  // streamingContent is updated via RAF at ~60fps during streaming
+  const [streamingContent, setStreamingContent] = useState<string>("");
+  const [isStreaming, setIsStreaming] = useState(false);
   const [pendingApproval, setPendingApproval] = useState<PendingAction | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
-  const currentResponseRef = useRef("");
+  // Raw accumulator — mutated on every chunk, never triggers re-render directly
+  const streamingRef = useRef<string>("");
+  // RAF handle so we don't schedule more than one frame at a time
+  const rafHandleRef = useRef<number | null>(null);
 
   const connect = useCallback(() => {
     if (!projectId || !agentName) return;
@@ -29,30 +35,53 @@ export function useAgentChat(projectId: string | null, agentName: string | null)
       const data = JSON.parse(event.data);
 
       if (data.type === "start") {
-        currentResponseRef.current = "";
-        setStreaming(true);
-        setMessages((prev) => [...prev, { role: "assistant", content: "" }]);
+        streamingRef.current = "";
+        setIsStreaming(true);
+        setStreamingContent("");
       } else if (data.type === "chunk") {
-        currentResponseRef.current += data.content;
-        setMessages((prev) => {
-          const updated = [...prev];
-          updated[updated.length - 1] = {
-            role: "assistant",
-            content: currentResponseRef.current,
-          };
-          return updated;
-        });
+        streamingRef.current += data.content;
+        // Batch DOM updates via RAF — at most one state update per frame (~60fps)
+        if (!rafHandleRef.current) {
+          rafHandleRef.current = requestAnimationFrame(() => {
+            setStreamingContent(streamingRef.current);
+            rafHandleRef.current = null;
+          });
+        }
       } else if (data.type === "done") {
-        setStreaming(false);
+        // Cancel any pending RAF flush before we finalize
+        if (rafHandleRef.current) {
+          cancelAnimationFrame(rafHandleRef.current);
+          rafHandleRef.current = null;
+        }
+        const finalContent = streamingRef.current;
+        streamingRef.current = "";
+        setStreamingContent("");
+        setIsStreaming(false);
+        if (finalContent) {
+          setCompletedMessages((prev) => [
+            ...prev,
+            { role: "assistant", content: finalContent },
+          ]);
+        }
       } else if (data.type === "error") {
-        setStreaming(false);
-        setMessages((prev) => [
+        if (rafHandleRef.current) {
+          cancelAnimationFrame(rafHandleRef.current);
+          rafHandleRef.current = null;
+        }
+        streamingRef.current = "";
+        setIsStreaming(false);
+        setStreamingContent("");
+        setCompletedMessages((prev) => [
           ...prev,
           { role: "assistant", content: `Error: ${data.content}` },
         ]);
       } else if (data.type === "tool_request") {
         // Agent wants to execute a tool — needs approval
-        setStreaming(false);
+        if (rafHandleRef.current) {
+          cancelAnimationFrame(rafHandleRef.current);
+          rafHandleRef.current = null;
+        }
+        setIsStreaming(false);
         setPendingApproval({
           id: data.id,
           type: data.action_type,
@@ -61,7 +90,7 @@ export function useAgentChat(projectId: string | null, agentName: string | null)
         });
       } else if (data.type === "tool_result") {
         // Tool execution result after approval
-        setMessages((prev) => [
+        setCompletedMessages((prev) => [
           ...prev,
           {
             role: "assistant",
@@ -72,7 +101,7 @@ export function useAgentChat(projectId: string | null, agentName: string | null)
     };
 
     ws.onerror = () => {
-      setStreaming(false);
+      setIsStreaming(false);
     };
 
     wsRef.current = ws;
@@ -84,14 +113,14 @@ export function useAgentChat(projectId: string | null, agentName: string | null)
         connect();
         setTimeout(() => {
           if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-            setMessages((prev) => [...prev, { role: "user", content: message }]);
+            setCompletedMessages((prev) => [...prev, { role: "user", content: message }]);
             wsRef.current.send(JSON.stringify({ type: "message", message }));
           }
         }, 500);
         return;
       }
 
-      setMessages((prev) => [...prev, { role: "user", content: message }]);
+      setCompletedMessages((prev) => [...prev, { role: "user", content: message }]);
       wsRef.current.send(JSON.stringify({ type: "message", message }));
     },
     [connect]
@@ -102,12 +131,12 @@ export function useAgentChat(projectId: string | null, agentName: string | null)
     wsRef.current.send(
       JSON.stringify({ type: "tool_approve", id: pendingApproval.id })
     );
-    setMessages((prev) => [
+    setCompletedMessages((prev) => [
       ...prev,
       { role: "user", content: `Approved: ${pendingApproval.description}` },
     ]);
     setPendingApproval(null);
-    setStreaming(true);
+    setIsStreaming(true);
   }, [pendingApproval]);
 
   const denyAction = useCallback(() => {
@@ -115,7 +144,7 @@ export function useAgentChat(projectId: string | null, agentName: string | null)
     wsRef.current.send(
       JSON.stringify({ type: "tool_deny", id: pendingApproval.id })
     );
-    setMessages((prev) => [
+    setCompletedMessages((prev) => [
       ...prev,
       { role: "user", content: `Denied: ${pendingApproval.description}` },
     ]);
@@ -123,7 +152,9 @@ export function useAgentChat(projectId: string | null, agentName: string | null)
   }, [pendingApproval]);
 
   const clearMessages = useCallback(() => {
-    setMessages([]);
+    setCompletedMessages([]);
+    setStreamingContent("");
+    streamingRef.current = "";
     setPendingApproval(null);
   }, []);
 
@@ -135,8 +166,9 @@ export function useAgentChat(projectId: string | null, agentName: string | null)
   }, []);
 
   return {
-    messages,
-    streaming,
+    completedMessages,
+    streamingContent,
+    isStreaming,
     pendingApproval,
     sendMessage,
     approveAction,
