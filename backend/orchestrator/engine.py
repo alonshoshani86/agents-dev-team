@@ -65,6 +65,17 @@ class TaskExecution:
 EventCallback = Callable[[dict], Coroutine[Any, Any, None]]
 
 
+def _has_active_agent(project_id: str, exclude_task_id: Optional[str] = None) -> Optional[str]:
+    """Check if any task in this project has an actively running agent (not just paused/choosing).
+    Returns the blocking task_id, or None."""
+    for tid, ex in _running_tasks.items():
+        if tid == exclude_task_id:
+            continue
+        if ex.project_id == project_id and ex._current_runner is not None:
+            return tid
+    return None
+
+
 async def start_pipeline(
     project_id: str,
     task_id: str,
@@ -72,6 +83,18 @@ async def start_pipeline(
     on_event: Optional[EventCallback] = None,
 ) -> None:
     """Start executing a task through a pipeline."""
+    # Prevent parallel agent execution in the same project (Claude Code SDK limitation)
+    blocker = _has_active_agent(project_id, exclude_task_id=task_id)
+    if blocker:
+        if on_event:
+            await on_event({
+                "type": "task_error",
+                "task_id": task_id,
+                "message": f"Another task is actively running an agent. Wait for it to finish or stop it first.",
+            })
+        _update_task(project_id, task_id, {"status": "error"})
+        return
+
     pipeline = get_pipeline(project_id, pipeline_id)
     if not pipeline:
         if on_event:
@@ -196,6 +219,25 @@ async def _execute_agent(
     agent_display = {"product": "Product", "architect": "Architect", "dev": "Dev", "test": "Test", "uxui": "UX/UI"}.get(agent_name, agent_name)
     append_terminal_message(execution.project_id, execution.task_id, agent_name, "system", f"Starting {agent_display} agent...")
 
+    # Show which artifacts are being passed as context
+    prev_artifacts = list_artifacts(execution.project_id, execution.task_id)
+    if prev_artifacts:
+        artifact_list = ", ".join(
+            f"{a.get('type', '?')} (by {a.get('agent', '?')}, {len(a.get('content', ''))} chars)"
+            for a in prev_artifacts
+        )
+        append_terminal_message(
+            execution.project_id, execution.task_id, agent_name, "system",
+            f"Context from previous steps: {artifact_list}"
+        )
+        if on_event:
+            await on_event({
+                "type": "step_chunk",
+                "task_id": execution.task_id,
+                "agent": agent_name,
+                "content": "",  # empty chunk to trigger UI update
+            })
+
     # Build context from task + previous artifacts
     task = storage.read_json(
         storage.project_tasks_dir(execution.project_id) / execution.task_id / "task.json"
@@ -245,8 +287,35 @@ async def _execute_agent(
                 execution._pending_permissions.pop(perm_id, None)
                 return {"id": perm_id, "behavior": "deny", "message": "Timed out waiting for user"}
 
+        async def _on_usage(usage: dict) -> None:
+            """Forward usage/token info to frontend."""
+            if on_event:
+                await on_event({
+                    "type": "usage_update",
+                    "task_id": execution.task_id,
+                    "agent": agent_name,
+                    "inputTokens": usage.get("inputTokens", 0),
+                    "outputTokens": usage.get("outputTokens", 0),
+                    "cacheRead": usage.get("cacheRead", 0),
+                    "cacheCreation": usage.get("cacheCreation", 0),
+                    "contextWindow": usage.get("contextWindow"),
+                    "costUSD": usage.get("costUSD"),
+                    "numTurns": usage.get("numTurns"),
+                    "final": usage.get("final", False),
+                })
+
+        async def _on_activity(activity: dict) -> None:
+            """Forward thinking/tool activity events to frontend."""
+            if on_event:
+                await on_event({
+                    **activity,
+                    "task_id": execution.task_id,
+                    "agent": agent_name,
+                })
+
         async for chunk in runner.stream_with_permissions(
-            user_message, on_permission=_on_permission, context=context
+            user_message, on_permission=_on_permission, context=context,
+            on_usage=_on_usage, on_activity=_on_activity,
         ):
             if execution.cancelled:
                 break
@@ -352,8 +421,8 @@ def _build_context(execution: TaskExecution, task: dict) -> str:
         for art in artifacts:
             parts.append(f"\n--- {art.get('type', 'unknown')} (by {art.get('agent', 'unknown')}) ---")
             content = art.get("content", "")
-            if len(content) > 3000:
-                content = content[:3000] + "\n... (truncated)"
+            if len(content) > 10000:
+                content = content[:10000] + "\n... (truncated)"
             parts.append(content)
 
     return "\n".join(parts) if parts else ""
@@ -575,6 +644,18 @@ async def run_single_agent(
     """
     import logging
     logger = logging.getLogger(__name__)
+
+    # Prevent parallel agent execution in the same project
+    blocker = _has_active_agent(project_id, exclude_task_id=task_id)
+    if blocker:
+        if on_event:
+            await on_event({
+                "type": "task_error",
+                "task_id": task_id,
+                "message": f"Another task is actively running an agent. Wait for it to finish or stop it first.",
+            })
+        _update_task(project_id, task_id, {"status": "error"})
+        return
 
     # Create a minimal pipeline execution
     pipeline = {"name": "manual", "start_agent": agent_name}

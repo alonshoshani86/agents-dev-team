@@ -87,8 +87,8 @@ export const api = {
     request<any[]>(`/projects/${projectId}/tasks/${taskId}/history`),
   taskArtifacts: (projectId: string, taskId: string) =>
     request<any[]>(`/projects/${projectId}/tasks/${taskId}/artifacts`),
-  updateArtifact: (projectId: string, taskId: string, artifactType: string, version: number, content: string) =>
-    request<any>(`/projects/${projectId}/tasks/${taskId}/artifacts/${artifactType}/${version}`, {
+  updateArtifact: (projectId: string, taskId: string, artifactType: string, content: string) =>
+    request<any>(`/projects/${projectId}/tasks/${taskId}/artifacts/${artifactType}`, {
       method: "PUT",
       body: JSON.stringify({ content }),
     }),
@@ -99,6 +99,10 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ permission_id: permissionId, behavior, message }),
     }),
+
+  // Git
+  getGitBranch: (projectId: string) =>
+    request<{ branch: string | null }>(`/projects/${projectId}/git-branch`),
 
   // Agents
   listAgents: (projectId: string) => request<any[]>(`/projects/${projectId}/agents`),

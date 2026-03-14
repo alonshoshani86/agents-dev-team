@@ -17,52 +17,45 @@ def create_artifact(
     content: str,
     agent: str,
 ) -> dict:
-    """Create and save a new artifact."""
+    """Create or update an artifact. Each type has a single file that gets overwritten."""
     artifacts_dir = storage.project_tasks_dir(project_id) / task_id / "artifacts"
     artifacts_dir.mkdir(parents=True, exist_ok=True)
 
-    # Determine version (increment from existing)
-    existing = list(artifacts_dir.glob(f"{artifact_type}-v*.md"))
-    version = len(existing) + 1
+    content_path = artifacts_dir / f"{artifact_type}.md"
+    meta_path = artifacts_dir / f"{artifact_type}.json"
+
+    # Load existing metadata to preserve the original id, or generate new
+    existing_meta = storage.read_json(meta_path)
+    artifact_id = existing_meta["id"] if existing_meta else storage.generate_id()
 
     artifact = {
-        "id": storage.generate_id(),
+        "id": artifact_id,
         "type": artifact_type,
-        "version": version,
         "agent": agent,
-        "created_at": storage.now_iso(),
+        "updated_at": storage.now_iso(),
     }
+    if existing_meta and existing_meta.get("created_at"):
+        artifact["created_at"] = existing_meta["created_at"]
+    else:
+        artifact["created_at"] = artifact["updated_at"]
 
-    # Save content as markdown file
-    content_path = artifacts_dir / f"{artifact_type}-v{version}.md"
+    # Overwrite content and metadata
     storage.write_text_file(content_path, content)
-
-    # Save metadata
-    meta_path = artifacts_dir / f"{artifact_type}-v{version}.json"
     storage.write_json(meta_path, artifact)
 
     artifact["content"] = content
     return artifact
 
 
-def get_artifact(project_id: str, task_id: str, artifact_type: str, version: Optional[int] = None) -> Optional[dict]:
-    """Get an artifact. If no version specified, get latest."""
+def get_artifact(project_id: str, task_id: str, artifact_type: str) -> Optional[dict]:
+    """Get an artifact by type."""
     artifacts_dir = storage.project_tasks_dir(project_id) / task_id / "artifacts"
-
-    if version is None:
-        # Find latest version
-        existing = sorted(artifacts_dir.glob(f"{artifact_type}-v*.md"))
-        if not existing:
-            return None
-        content_path = existing[-1]
-        version = len(existing)
-    else:
-        content_path = artifacts_dir / f"{artifact_type}-v{version}.md"
+    content_path = artifacts_dir / f"{artifact_type}.md"
 
     if not content_path.exists():
         return None
 
-    meta_path = artifacts_dir / f"{artifact_type}-v{version}.json"
+    meta_path = artifacts_dir / f"{artifact_type}.json"
     meta = storage.read_json(meta_path) or {}
 
     content = storage.read_text_file(content_path)
@@ -70,7 +63,7 @@ def get_artifact(project_id: str, task_id: str, artifact_type: str, version: Opt
 
 
 def list_artifacts(project_id: str, task_id: str) -> List[dict]:
-    """List all artifacts for a task."""
+    """List all artifacts for a task (one per type)."""
     artifacts_dir = storage.project_tasks_dir(project_id) / task_id / "artifacts"
     if not artifacts_dir.exists():
         return []
@@ -79,7 +72,6 @@ def list_artifacts(project_id: str, task_id: str) -> List[dict]:
     for meta_file in sorted(artifacts_dir.glob("*.json")):
         meta = storage.read_json(meta_file)
         if meta:
-            # Read content
             content_file = meta_file.with_suffix(".md")
             if content_file.exists():
                 meta["content"] = storage.read_text_file(content_file)
@@ -88,18 +80,20 @@ def list_artifacts(project_id: str, task_id: str) -> List[dict]:
     return artifacts
 
 
-def update_artifact_content(project_id: str, task_id: str, artifact_type: str, version: int, content: str) -> Optional[dict]:
+def update_artifact_content(project_id: str, task_id: str, artifact_type: str, content: str) -> Optional[dict]:
     """Update an artifact's content (for human-in-the-loop editing)."""
     artifacts_dir = storage.project_tasks_dir(project_id) / task_id / "artifacts"
-    content_path = artifacts_dir / f"{artifact_type}-v{version}.md"
+    content_path = artifacts_dir / f"{artifact_type}.md"
 
     if not content_path.exists():
         return None
 
     storage.write_text_file(content_path, content)
 
-    meta_path = artifacts_dir / f"{artifact_type}-v{version}.json"
+    meta_path = artifacts_dir / f"{artifact_type}.json"
     meta = storage.read_json(meta_path) or {}
+    meta["updated_at"] = storage.now_iso()
+    storage.write_json(meta_path, meta)
     meta["content"] = content
     return meta
 

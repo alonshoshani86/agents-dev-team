@@ -56,6 +56,7 @@ export function usePipelineEvents(projectId: string | null) {
 
       switch (data.type) {
         case "task_started":
+          store.clearContextUsage();
           break;
 
         case "step_started": {
@@ -104,6 +105,109 @@ export function usePipelineEvents(projectId: string | null) {
               },
             };
           });
+          break;
+        }
+
+        case "thinking_start": {
+          const agent = data.agent as string;
+          updateTerminals((snap) => {
+            const terminal = snap.agentTerminals[agent] || { ...EMPTY_TERMINAL, messages: [] };
+            return {
+              agentTerminals: {
+                ...snap.agentTerminals,
+                [agent]: {
+                  ...terminal,
+                  messages: [...terminal.messages, { role: "thinking", content: "" }],
+                },
+              },
+            };
+          });
+          break;
+        }
+
+        case "thinking_chunk": {
+          const agent = data.agent as string;
+          const content = data.content as string;
+          updateTerminals((snap) => {
+            const terminal = snap.agentTerminals[agent] || { ...EMPTY_TERMINAL, messages: [] };
+            const msgs = [...terminal.messages];
+            if (msgs.length > 0 && msgs[msgs.length - 1].role === "thinking") {
+              msgs[msgs.length - 1] = {
+                ...msgs[msgs.length - 1],
+                content: msgs[msgs.length - 1].content + content,
+              };
+            } else {
+              msgs.push({ role: "thinking", content });
+            }
+            return {
+              agentTerminals: {
+                ...snap.agentTerminals,
+                [agent]: { ...terminal, messages: msgs },
+              },
+            };
+          });
+          break;
+        }
+
+        case "tool_start": {
+          const agent = data.agent as string;
+          const toolName = data.toolName as string;
+          updateTerminals((snap) => {
+            const terminal = snap.agentTerminals[agent] || { ...EMPTY_TERMINAL, messages: [] };
+            return {
+              agentTerminals: {
+                ...snap.agentTerminals,
+                [agent]: {
+                  ...terminal,
+                  messages: [...terminal.messages, { role: "tool", content: `▶ ${toolName}` }],
+                },
+              },
+            };
+          });
+          break;
+        }
+
+        case "tool_end": {
+          const agent = data.agent as string;
+          const summary = data.summary as string;
+          updateTerminals((snap) => {
+            const terminal = snap.agentTerminals[agent] || { ...EMPTY_TERMINAL, messages: [] };
+            const msgs = [...terminal.messages];
+            // Update the last tool message with the summary
+            for (let i = msgs.length - 1; i >= 0; i--) {
+              if (msgs[i].role === "tool" && msgs[i].content.startsWith("▶")) {
+                msgs[i] = { ...msgs[i], content: `✓ ${summary}` };
+                break;
+              }
+            }
+            return {
+              agentTerminals: {
+                ...snap.agentTerminals,
+                [agent]: { ...terminal, messages: msgs },
+              },
+            };
+          });
+          break;
+        }
+
+        case "tool_result": {
+          const agent = data.agent as string;
+          const toolName = data.toolName as string;
+          const preview = data.preview as string;
+          if (preview) {
+            updateTerminals((snap) => {
+              const terminal = snap.agentTerminals[agent] || { ...EMPTY_TERMINAL, messages: [] };
+              return {
+                agentTerminals: {
+                  ...snap.agentTerminals,
+                  [agent]: {
+                    ...terminal,
+                    messages: [...terminal.messages, { role: "tool", content: `⇐ ${toolName}: ${preview}` }],
+                  },
+                },
+              };
+            });
+          }
           break;
         }
 
@@ -320,6 +424,23 @@ export function usePipelineEvents(projectId: string | null) {
           const permId = data.permission_id as string;
           console.log("[PipelineEvents] Permission resolved:", permId, data.behavior);
           store.removePermissionRequest(permId);
+          break;
+        }
+
+        case "usage_update": {
+          const agent = data.agent as string || "";
+          if (agent) {
+            store.setContextUsage(agent, {
+              inputTokens: data.inputTokens as number || 0,
+              outputTokens: data.outputTokens as number || 0,
+              cacheRead: data.cacheRead as number || 0,
+              cacheCreation: data.cacheCreation as number || 0,
+              contextWindow: data.contextWindow as number || 200000,
+              costUSD: data.costUSD as number || 0,
+              numTurns: data.numTurns as number || 0,
+              agent,
+            });
+          }
           break;
         }
 
