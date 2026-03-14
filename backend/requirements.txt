@@ -4,3 +4,4 @@ anthropic==0.42.0
 pydantic==2.10.4
 python-dotenv==1.0.1
 websockets==14.1
+python-frontmatter>=1.1.0
