@@ -121,7 +121,7 @@ export function Sidebar() {
                 <span className="task-item-text">
                   <span className="task-item-title">{task.title}</span>
                   <span style={{ display: "flex", alignItems: "center", gap: 4 }}>
-                    <code style={{ fontSize: 10, fontFamily: "monospace", color: "var(--text-muted)", background: "var(--bg-tertiary)", padding: "1px 4px", borderRadius: 3 }}>task/{task.id}</code>
+                    <span style={{ fontSize: 11, color: "var(--text-muted)", fontWeight: 500 }}>{task.name || task.title}</span>
                     <span className="task-item-status">{STATUS_LABELS[task.status] || task.status}</span>
                   </span>
                 </span>
