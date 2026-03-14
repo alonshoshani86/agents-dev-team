@@ -149,7 +149,8 @@ export function PipelineView() {
     }
   }
 
-  const showRunBar = !pipelineChoosingAgent && !pipelineWaitingInput && task?.status !== "running" && task?.status !== "pending";
+  // Always show run bar — user can always trigger an agent
+  const showRunBar = task?.status !== "pending";
 
   function detectAgentFromInput(text: string): string | null {
     const lower = text.toLowerCase().trim();

@@ -257,16 +257,25 @@ export const useStore = create<AppState>((set, get) => ({
       }
     }
 
+    // Always refresh tasks from backend so statuses are current
+    if (s.activeProjectId) {
+      const pid = s.activeProjectId;
+      setTimeout(() => {
+        get().fetchTasks(pid);
+      }, 0);
+    }
+
     return {
       activeTaskId: taskId,
       activeView: taskId ? "pipeline" : "welcome",
       _taskTerminalsCache: cache,
       agentTerminals,
       pipelineAgentTab,
-      pipelineWaitingInput: restored?.pipelineWaitingInput ?? false,
-      pipelineChoosingAgent: restored?.pipelineChoosingAgent ?? false,
+      // Always derive flags from task status — cached flags can go stale
+      pipelineWaitingInput: taskId ? (s.tasks.find(t => t.id === taskId)?.status === "waiting_input") : false,
+      pipelineChoosingAgent: taskId ? (s.tasks.find(t => t.id === taskId)?.status === "choosing_agent") : false,
       suggestedNextAgent: restored?.suggestedNextAgent ?? null,
-      askingAgent: restored?.askingAgent ?? false,
+      askingAgent: false,
     };
   }),
 

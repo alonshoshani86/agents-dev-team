@@ -26,6 +26,28 @@ app.include_router(files_router, tags=["files"])
 app.include_router(ws_router, tags=["websocket"])
 
 
+@app.on_event("startup")
+async def cleanup_stale_tasks():
+    """Reset tasks stuck in 'running' status from a previous server session."""
+    import storage
+    projects_dir = storage.projects_dir()
+    if not projects_dir.exists():
+        return
+    for proj_dir in projects_dir.iterdir():
+        if not proj_dir.is_dir():
+            continue
+        tasks_dir = proj_dir / "tasks"
+        if not tasks_dir.exists():
+            continue
+        for task_dir in tasks_dir.iterdir():
+            task_file = task_dir / "task.json"
+            task = storage.read_json(task_file)
+            if task and task.get("status") == "running":
+                task["status"] = "error"
+                task["updated_at"] = storage.now_iso()
+                storage.write_json(task_file, task)
+
+
 @app.get("/health")
 async def health():
     return {"status": "ok"}
