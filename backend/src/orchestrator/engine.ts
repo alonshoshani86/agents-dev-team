@@ -403,16 +403,22 @@ async function executeAgent(
 
   if (execution.cancelled) return [null, null];
 
-  // Save full response to terminal log
-  await updateLastTerminalMessage(execution.projectId, execution.taskId, agentName, fullResponse);
-
-  // Detect signals
+  // Detect signals before stripping tags
   const signal = detectSignal(fullResponse);
   const nextAgent = detectNextAgent(fullResponse);
 
+  // Strip internal routing tags from display/storage
+  const cleanResponse = fullResponse
+    .replace(/\[PIPELINE:NEEDS_INPUT\]/gi, "")
+    .replace(/\[NEXT:\w+\]/gi, "")
+    .trim();
+
+  // Save cleaned response to terminal log
+  await updateLastTerminalMessage(execution.projectId, execution.taskId, agentName, cleanResponse);
+
   // Save artifact
   const artifactType = agentArtifactType(agentName);
-  await createArtifact(execution.projectId, execution.taskId, artifactType, fullResponse, agentName);
+  await createArtifact(execution.projectId, execution.taskId, artifactType, cleanResponse, agentName);
 
   // Log to history
   await appendHistory(execution.projectId, execution.taskId, {
@@ -446,9 +452,11 @@ async function executeAgent(
   }
 
   const nextDisplay = AGENT_DISPLAY[nextAgent ?? ""] ?? nextAgent ?? "";
-  const completionMsg = nextAgent
-    ? `${agentDisplay} completed. Routing to ${nextDisplay}...`
-    : `${agentDisplay} agent completed.`;
+  const completionMsg = signal === "needs_input"
+    ? `${agentDisplay} has a follow-up question. Please respond below.`
+    : nextAgent
+      ? `${agentDisplay} completed. Routing to ${nextDisplay}...`
+      : `${agentDisplay} agent completed.`;
   await appendTerminalMessage(execution.projectId, execution.taskId, agentName, "system", completionMsg);
 
   if (onEvent) {
