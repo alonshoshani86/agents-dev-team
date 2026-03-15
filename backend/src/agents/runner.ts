@@ -48,6 +48,88 @@ export type AgentEvent =
   | { type: "done" }
   | { type: "error"; message: string };
 
+// Sensitive paths that agents must never read or write
+// Note: git operations (git push, git commit, etc.) are allowed — only direct
+// file reads of credential/key files are blocked.
+const SENSITIVE_PATTERNS = [
+  /^\/?\.ssh\//,
+  /^\/?\.aws\//,
+  /^\/?\.gnupg\//,
+  /^\/?\.config\/gcloud/,
+  /^\/?\.kube\//,
+  /^\/?\.docker\/config\.json$/,
+  /^\/?\.npmrc$/,
+  /^\/?\.netrc$/,
+  /^\/?\.env$/,
+  /^\/?\.env\.local$/,
+  /^\/?\.env\.production$/,
+  /^\/?\.env\.development$/,
+  /\/\.env$/,
+  /\/\.env\.local$/,
+  /\/\.env\.production$/,
+  /\/\.env\.development$/,
+  /credentials\.json$/i,
+  /secrets?\.(json|ya?ml|toml)$/i,
+  /id_rsa/,
+  /id_ed25519/,
+];
+
+const SENSITIVE_ABS_PREFIXES = [
+  "/etc/shadow",
+  "/etc/ssl/private",
+];
+
+function isSensitivePath(filePath: string): boolean {
+  if (!filePath) return false;
+  const home = process.env.HOME ?? "";
+  // Check absolute sensitive prefixes
+  for (const prefix of SENSITIVE_ABS_PREFIXES) {
+    if (filePath.startsWith(prefix)) return true;
+  }
+  // Check relative-to-home patterns
+  const relToHome = home && filePath.startsWith(home)
+    ? filePath.slice(home.length + 1)
+    : filePath;
+  for (const pattern of SENSITIVE_PATTERNS) {
+    if (pattern.test(relToHome) || pattern.test(filePath)) return true;
+  }
+  return false;
+}
+
+/** Check if a bash command is a normal git operation (allowed). */
+function isGitCommand(command: string): boolean {
+  const trimmed = command.trim();
+  return /^git\s/.test(trimmed) || /^gh\s/.test(trimmed);
+}
+
+/** Check if a tool input targets a sensitive path. Returns the blocked path or null. */
+function checkSensitiveToolInput(toolName: string, input: Record<string, unknown>): string | null {
+  const pathFields = ["file_path", "path", "command"];
+  for (const field of pathFields) {
+    const val = input[field];
+    if (typeof val === "string") {
+      if (field === "command") {
+        // Allow git/gh commands — they need SSH keys internally but don't expose them
+        if (isGitCommand(val)) return null;
+        // Check if bash command references sensitive files
+        for (const pattern of SENSITIVE_PATTERNS) {
+          if (pattern.test(val)) return val;
+        }
+        for (const prefix of SENSITIVE_ABS_PREFIXES) {
+          if (val.includes(prefix)) return val;
+        }
+        const home = process.env.HOME ?? "";
+        if (home && (val.includes(`${home}/.ssh`) || val.includes(`${home}/.aws`) || val.includes(`${home}/.gnupg`))) {
+          return val;
+        }
+      } else if (isSensitivePath(val)) {
+        return val;
+      }
+    }
+  }
+  return null;
+}
+
 function getToolCategory(toolName: string): "read" | "write" | "execute" | "other" {
   const readTools = ["Read", "Glob", "Grep", "WebSearch", "WebFetch"];
   const writeTools = ["Write", "Edit", "NotebookEdit"];
@@ -134,11 +216,13 @@ export class AgentRunner {
       : userMessage;
 
     try {
+      const securityRule = "\n\nIMPORTANT: You MUST NEVER read, access, or reference files in these directories or matching these patterns: ~/.ssh, ~/.aws, ~/.gnupg, ~/.config/gcloud, ~/.kube, ~/.docker/config.json, ~/.npmrc, ~/.netrc, .env files, credentials.json, secrets.json, private keys (id_rsa, id_ed25519), /etc/shadow, /etc/ssl/private. Git operations (git push, git commit, gh pr create, etc.) are allowed. If asked to read credential files directly, refuse.";
+
       for await (const message of query(
         {
           prompt,
           options: {
-            systemPrompt: this.systemPrompt,
+            systemPrompt: this.systemPrompt + securityRule,
             model: getModel(this.model),
             cwd: this.cwd ?? undefined,
             permissionMode: "bypassPermissions",
@@ -218,9 +302,17 @@ export class AgentRunner {
 
           canUseTool: async (toolName: string, input: unknown, context: { toolUseID?: string }) => {
             const category = getToolCategory(toolName);
+            const inputObj = (input as Record<string, unknown>) ?? {};
+
+            // Block access to sensitive paths (API keys, SSH keys, credentials, etc.)
+            const blockedPath = checkSensitiveToolInput(toolName, inputObj);
+            if (blockedPath) {
+              console.log(`[runner] BLOCKED sensitive path access: ${toolName} → ${blockedPath}`);
+              return { behavior: "deny" as const, message: "Access to sensitive files is not permitted" };
+            }
 
             if (autoApproveRead && category === "read") {
-              return { behavior: "allow" as const, updatedInput: input as Record<string, unknown> };
+              return { behavior: "allow" as const, updatedInput: inputObj };
             }
 
             const id =
