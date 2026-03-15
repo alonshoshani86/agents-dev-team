@@ -2,6 +2,14 @@
 
 A full-stack web platform that orchestrates AI agents (Product, Architect, Dev, Test, UX/UI) to collaboratively build software features. Each agent has specialized expertise and real access to your codebase through the Claude Agent SDK. Tasks run through configurable pipelines with human-in-the-loop controls, permission management, cost tracking, and isolated git worktrees per task.
 
+![Login — Authenticate via Claude Code CLI or API key](docs/screenshot-login.png)
+
+![Pipeline View — Cost breakdown, agent output, and test results](docs/screenshot-pipeline.png)
+
+![Artifacts View — Architecture documents and structured agent outputs](docs/screenshot-artifacts.png)
+
+![New Task — Choose a pipeline and describe what you want built](docs/screenshot-new-task.png)
+
 ---
 
 ## Table of Contents
