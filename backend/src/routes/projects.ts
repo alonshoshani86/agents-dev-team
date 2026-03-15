@@ -26,13 +26,20 @@ export async function registerProjectRoutes(app: FastifyInstance): Promise<void>
       return reply.code(400).send({ detail: "name is required" });
     }
 
+    const validPaths = (paths ?? []).filter(
+      (p) => p.path && typeof p.path === "string" && p.path.trim() !== "",
+    );
+    if (validPaths.length === 0) {
+      return reply.code(400).send({ detail: "at least one repo path is required" });
+    }
+
     const projectId = storage.generateId();
     const project = {
       id: projectId,
       name,
       description,
       tech_stack,
-      paths,
+      paths: validPaths,
       status: "active",
       created_at: storage.nowIso(),
     };

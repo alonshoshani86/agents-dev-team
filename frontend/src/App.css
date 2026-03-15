@@ -419,6 +419,29 @@ body {
   color: var(--error);
 }
 
+/* Inline validation feedback */
+.field-error {
+  display: block;
+  font-size: 11px;
+  color: var(--error);
+  margin-top: 4px;
+}
+
+.field-error.submit-error {
+  margin-bottom: 8px;
+  font-size: 12px;
+}
+
+.form-group input.input-error,
+.form-group .path-value.input-error {
+  border-color: var(--error);
+}
+
+.form-group input.input-error:focus,
+.form-group .path-value.input-error:focus {
+  border-color: var(--error);
+}
+
 .btn-link {
   background: none;
   border: none;
