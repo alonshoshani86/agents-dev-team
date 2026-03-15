@@ -162,6 +162,9 @@ Enter your Anthropic API key directly in the Settings page. The key is validated
 ### Option 3: API Key (via Environment Variable)
 Set `ANTHROPIC_API_KEY` in your shell before starting the backend. The app will pick it up automatically.
 
+### Signing Out
+Click the power icon (&#x23FB;) in the top-right corner of the app. This clears your authentication and returns you to the login screen.
+
 ### Model Selection
 
 | Setting | Default | Purpose |
@@ -465,6 +468,7 @@ agents-dev-team/
 | `GET` | `/projects/:id` | Get project details |
 | `PUT` | `/projects/:id` | Update project |
 | `DELETE` | `/projects/:id` | Delete project |
+| `GET` | `/projects/:id/git-branch` | Get current git branch |
 
 ### Tasks
 
@@ -487,6 +491,10 @@ agents-dev-team/
 | `GET` | `/projects/:id/tasks/:taskId/artifacts` | List artifacts |
 | `GET` | `/projects/:id/tasks/:taskId/history` | Get execution history |
 | `GET` | `/projects/:id/tasks/:taskId/terminals` | Get terminal logs |
+| `GET` | `/projects/:id/tasks/:taskId/status` | Get current execution status |
+| `GET` | `/projects/:id/tasks/:taskId/artifacts/:type/content` | Get artifact content |
+| `GET` | `/projects/:id/tasks/:taskId/artifacts/:type/runs` | List artifact run history |
+| `PUT` | `/projects/:id/tasks/:taskId/artifacts/:type` | Update artifact content |
 
 ### Agents
 
@@ -495,6 +503,7 @@ agents-dev-team/
 | `GET` | `/projects/:id/agents` | List agents |
 | `GET` | `/projects/:id/agents/:name` | Get agent config |
 | `PUT` | `/projects/:id/agents/:name` | Update agent config |
+| `POST` | `/projects/:id/agents/:name/chat` | Stream chat with agent (WebSocket) |
 
 ### Config
 
@@ -504,6 +513,7 @@ agents-dev-team/
 | `PUT` | `/config` | Update config |
 | `POST` | `/config/validate-key` | Validate API key |
 | `POST` | `/config/auth-cli` | CLI authentication |
+| `POST` | `/config/logout` | Clear auth and sign out |
 
 ### Other
 
@@ -536,6 +546,20 @@ Connect to `ws://localhost:8001/ws/projects/:projectId/events` for real-time upd
 | `task_completed` | Task finished successfully | `task_id` |
 | `task_error` | Task failed | `task_id`, `message` |
 | `task_cancelled` | Task cancelled | `task_id` |
+| `task_paused` | Task paused | `task_id` |
+| `task_resumed` | Task resumed | `task_id` |
+| `pipeline_stopped` | Pipeline hit max iterations | `task_id` |
+| `next_agent_chosen` | User chose next agent | `task_id`, `agent` |
+| `permission_resolved` | Permission request resolved | `task_id`, `permission_id` |
+
+### Ask-Agent Events
+
+| Event | Description | Key Fields |
+|-------|-------------|------------|
+| `ask_agent_started` | Agent question started | `task_id`, `agent` |
+| `ask_agent_chunk` | Text chunk from agent response | `task_id`, `agent`, `content` |
+| `ask_agent_done` | Agent finished responding | `task_id`, `agent` |
+| `ask_agent_error` | Error during agent question | `task_id`, `message` |
 
 ### Activity Events
 
@@ -546,6 +570,7 @@ Connect to `ws://localhost:8001/ws/projects/:projectId/events` for real-time upd
 | `tool_start` | Tool execution started | `task_id`, `agent`, `toolName` |
 | `tool_end` | Tool execution finished | `task_id`, `agent`, `toolName`, `summary` |
 | `tool_result` | Tool output | `task_id`, `agent`, `toolName`, `preview` |
+| `agent_status` | Agent status changed | `task_id`, `agent`, `status` (`working`/`idle`) |
 
 ---
 
