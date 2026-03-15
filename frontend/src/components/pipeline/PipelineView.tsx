@@ -10,6 +10,29 @@ import { ArtifactPanel } from "./ArtifactPanel";
 import { PermissionModal } from "./PermissionModal";
 import { CostBreakdownPanel } from "./CostBreakdownPanel";
 
+function useElapsedTime(isRunning: boolean) {
+  const [elapsed, setElapsed] = useState(0);
+  const startRef = useRef<number>(Date.now());
+
+  useEffect(() => {
+    if (!isRunning) {
+      setElapsed(0);
+      return;
+    }
+    startRef.current = Date.now();
+    setElapsed(0);
+    const interval = setInterval(() => {
+      setElapsed(Math.floor((Date.now() - startRef.current) / 1000));
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [isRunning]);
+
+  if (!isRunning) return null;
+  const mins = Math.floor(elapsed / 60);
+  const secs = elapsed % 60;
+  return mins > 0 ? `${mins}m ${secs}s` : `${secs}s`;
+}
+
 const PIPELINE_AGENTS = [
   { name: "product", display: "Product" },
   { name: "architect", display: "Architect" },
@@ -51,6 +74,9 @@ export function PipelineView() {
   const contextUsage = useStore((s) => s.contextUsage);
 
   const task = tasks.find((t) => t.id === activeTaskId);
+
+  const isAgentWorking = task?.status === "running" || Object.values(agentTerminals).some((t) => t.status === "working" || t.streaming);
+  const elapsedTime = useElapsedTime(!!isAgentWorking);
   const activeTerminal: AgentTerminalState | null = pipelineAgentTab
     ? agentTerminals[pipelineAgentTab] || null
     : null;
@@ -432,6 +458,13 @@ export function PipelineView() {
                   <ReactMarkdown
                     remarkPlugins={[remarkGfm]}
                     components={{
+                      a({ href, children, ...props }) {
+                        return (
+                          <a href={href} target="_blank" rel="noopener noreferrer" {...props}>
+                            {children}
+                          </a>
+                        );
+                      },
                       code({ className, children, ...props }) {
                         const match = /language-(\w+)/.exec(className || "");
                         const codeStr = String(children).replace(/\n$/, "");
@@ -477,6 +510,16 @@ export function PipelineView() {
             </div>
           ))}
 
+          {isAgentWorking && (
+            <div className="agent-working-indicator">
+              <span className="agent-working-pulse" />
+              <span className="agent-working-text">
+                {activeTerminal?.streaming ? "Agent is writing..." : "Agent is working..."}
+              </span>
+              {elapsedTime && <span className="agent-working-elapsed">{elapsedTime}</span>}
+            </div>
+          )}
+
         </div>
 
         {/* Run Agent / Choose Next Agent bar */}
@@ -502,7 +545,7 @@ export function PipelineView() {
                 {agent.name === suggestedNextAgent && <span className="suggested-badge">suggested</span>}
               </button>
             ))}
-            {(pipelineChoosingAgent || task.status === "choosing_agent") && (
+            {(pipelineChoosingAgent || task.status === "choosing_agent" || task.status === "completed" || task.status === "error" || (!isAgentWorking && task.status !== "pending" && task.status !== "cancelled")) && (
               <button
                 className="btn-run-agent done"
                 onClick={() => handleChooseAgent(null)}
