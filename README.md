@@ -45,23 +45,18 @@ A full-stack web platform that orchestrates AI agents (Product, Architect, Dev, 
 git clone https://github.com/alonshoshani86/agents-dev-team.git
 cd agents-dev-team
 
-# 2. Install dependencies
-cd backend && npm install && cd ..
-cd frontend && npm install && cd ..
+# 2. Start everything (installs deps automatically)
+./start.sh
 
-# 3. Authentication (choose one):
-#    Option A: Set API key via environment variable
-export ANTHROPIC_API_KEY="sk-ant-..."
-#    Option B: Use Claude Code CLI (if installed) — configure in the UI Settings page
-#    Option C: Enter API key in the UI Settings page after launch
+# 3. Open http://localhost:5173 and configure authentication in the UI
+```
 
-# 4. Start backend (port 8001)
-cd backend && npm run dev &
+The `start.sh` script installs dependencies (if needed), starts both backend and frontend, and handles cleanup on Ctrl+C.
 
-# 5. Start frontend (port 5173)
-cd frontend && npm run dev &
-
-# 6. Open http://localhost:5173
+**Manual start** (if you prefer):
+```bash
+cd backend && npm install && npm run dev &
+cd frontend && npm install && npm run dev &
 ```
 
 ---
@@ -594,6 +589,17 @@ kill -9 <PID>
 
 **Node not found (background processes):**
 Use full path: `/usr/local/bin/node node_modules/.bin/tsx watch src/index.ts`
+
+### Project or task data lost after crash (dev mode)
+
+The backend stores all data in `backend/data/` as JSON files. In development mode (`npm run dev`), `tsx watch` monitors file changes to auto-reload. The `data/` directory is excluded from watching (via `--exclude './data/**'`), but if you're running an older version without this fix, `tsx watch` may restart the server every time a task writes to disk — killing the process mid-write and losing data.
+
+**Fix:** Make sure your `backend/package.json` dev script includes the ignore flag:
+```json
+"dev": "tsx watch --exclude './data/**' src/index.ts"
+```
+
+**Note:** `backend/data/` is gitignored — it is never committed or synced between machines. Each developer has their own local data.
 
 ### Agent produces no output
 
