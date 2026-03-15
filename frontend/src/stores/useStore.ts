@@ -109,15 +109,18 @@ const EMPTY_TERMINAL: AgentTerminalState = {
   status: "idle",
 };
 
+const savedProjectId = localStorage.getItem("lastProjectId");
+const savedTaskId = localStorage.getItem("lastTaskId");
+
 export const useStore = create<AppState>((set, get) => ({
   projects: [],
-  activeProjectId: null,
+  activeProjectId: savedProjectId || null,
   activeAgentName: null,
-  activeView: "welcome",
+  activeView: savedTaskId ? "pipeline" : savedProjectId ? "welcome" : "welcome",
   sidebarOpen: true,
   loading: false,
   tasks: [],
-  activeTaskId: null,
+  activeTaskId: savedTaskId || null,
   agentTerminals: {},
   pipelineAgentTab: null,
   pipelineWaitingInput: false,
@@ -129,14 +132,19 @@ export const useStore = create<AppState>((set, get) => ({
   contextUsage: {},
   _taskTerminalsCache: {},
 
-  setActiveProject: (id) => set({
-    activeProjectId: id,
-    activeAgentName: null,
-    activeView: "welcome",
-    tasks: [],
-    activeTaskId: null,
-    agentTerminals: {},
-  }),
+  setActiveProject: (id) => {
+    if (id) localStorage.setItem("lastProjectId", id);
+    else localStorage.removeItem("lastProjectId");
+    localStorage.removeItem("lastTaskId");
+    set({
+      activeProjectId: id,
+      activeAgentName: null,
+      activeView: "welcome",
+      tasks: [],
+      activeTaskId: null,
+      agentTerminals: {},
+    });
+  },
 
   setActiveAgent: (name) => set({ activeAgentName: name, activeView: name ? "agent-chat" : "welcome" }),
 
@@ -266,6 +274,9 @@ export const useStore = create<AppState>((set, get) => ({
         get().fetchTasks(pid);
       }, 0);
     }
+
+    if (taskId) localStorage.setItem("lastTaskId", taskId);
+    else localStorage.removeItem("lastTaskId");
 
     return {
       activeTaskId: taskId,

@@ -256,9 +256,13 @@ export function usePipelineEvents(projectId: string | null) {
           const agent = data.agent as string;
           const display = AGENT_DISPLAY[agent] || agent;
           const nextAgent = data.next_agent as string | undefined;
-          const msg = nextAgent
-            ? `${display} completed. Routing to ${AGENT_DISPLAY[nextAgent] || nextAgent}...`
-            : `${display} agent completed.`;
+          const signal = data.signal as string | undefined;
+          const isNeedsInput = signal === "needs_input";
+          const msg = isNeedsInput
+            ? `${display} has a follow-up question. Please respond below.`
+            : nextAgent
+              ? `${display} completed. Routing to ${AGENT_DISPLAY[nextAgent] || nextAgent}...`
+              : `${display} agent completed.`;
           updateTerminals((snap) => {
             const terminal = snap.agentTerminals[agent] || { ...EMPTY_TERMINAL, messages: [] };
             return {
@@ -266,7 +270,7 @@ export function usePipelineEvents(projectId: string | null) {
                 ...snap.agentTerminals,
                 [agent]: {
                   ...terminal,
-                  status: "done",
+                  status: isNeedsInput ? "input" : "done",
                   streaming: false,
                   messages: [...terminal.messages, { role: "system", content: msg }],
                 },

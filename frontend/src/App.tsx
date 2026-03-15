@@ -16,7 +16,25 @@ export default function App() {
     api.getConfig().then((config) => {
       if (config.authenticated) {
         setAuthenticated(true);
-        fetchProjects();
+        fetchProjects().then(() => {
+          // Restore last project/task from localStorage
+          const savedProject = localStorage.getItem("lastProjectId");
+          const savedTask = localStorage.getItem("lastTaskId");
+          if (savedProject) {
+            const store = useStore.getState();
+            if (store.projects.some((p: any) => p.id === savedProject)) {
+              store.fetchTasks(savedProject).then(() => {
+                if (savedTask) {
+                  store.setActiveTask(savedTask);
+                }
+              });
+            } else {
+              // Saved project no longer exists
+              localStorage.removeItem("lastProjectId");
+              localStorage.removeItem("lastTaskId");
+            }
+          }
+        });
       }
       setAuthChecked(true);
     }).catch(() => {
