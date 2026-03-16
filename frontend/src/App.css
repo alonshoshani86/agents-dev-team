@@ -957,39 +957,6 @@ body {
   font-style: italic;
 }
 
-.thinking-dots {
-  display: flex;
-  gap: 4px;
-  align-items: center;
-}
-
-.thinking-dots span {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: #58a6ff;
-  animation: thinking-pulse 1.4s infinite ease-in-out;
-}
-
-.thinking-dots .dot-2 {
-  animation-delay: 0.2s;
-}
-
-.thinking-dots .dot-3 {
-  animation-delay: 0.4s;
-}
-
-@keyframes thinking-pulse {
-  0%, 80%, 100% {
-    opacity: 0.2;
-    transform: scale(0.8);
-  }
-  40% {
-    opacity: 1;
-    transform: scale(1);
-  }
-}
-
 /* Agent working indicator at bottom of terminal */
 .agent-working-indicator {
   display: flex;
