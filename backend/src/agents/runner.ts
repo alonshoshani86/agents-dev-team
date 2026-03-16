@@ -270,6 +270,7 @@ export class AgentRunner {
       autoApproveRead?: boolean;
       onUsage?: (usage: AgentEvent & { type: "usage" }) => Promise<void>;
       onActivity?: (event: AgentEvent) => Promise<void>;
+      onPrLink?: (url: string) => Promise<void>;
     },
   ): AsyncGenerator<string> {
     this._cancelled = false;
@@ -387,6 +388,15 @@ export class AgentRunner {
             typeof msg.result === "string"
               ? msg.result
               : JSON.stringify(msg.result ?? "");
+
+          const PR_URL_REGEX = /https:\/\/github\.com\/[^\s/]+\/[^\s/]+\/pull\/\d+/;
+          if (toolName === "Bash" && opts.onPrLink) {
+            const match = resultStr.match(PR_URL_REGEX);
+            if (match) {
+              await opts.onPrLink(match[0]);
+            }
+          }
+
           const preview = resultStr.length > 200 ? resultStr.substring(0, 200) + "..." : resultStr;
           await opts.onActivity?.({ type: "tool_result", toolName, preview });
         }

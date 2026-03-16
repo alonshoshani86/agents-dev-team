@@ -28,6 +28,7 @@ export interface Task {
   total_cost_usd?: number;
   agent_costs?: Record<string, number>;
   error_message?: string;
+  pr_link?: string;
 }
 
 export interface Agent {

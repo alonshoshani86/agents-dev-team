@@ -265,7 +265,7 @@ export async function registerTaskRoutes(
       task.paused = false;
       task.updated_at = storage.nowIso();
       await storage.writeJson(taskPath(projectId, taskId), task);
-      await broadcast(projectId, { type: "task_completed", task_id: taskId });
+      await broadcast(projectId, { type: "task_completed", task_id: taskId, pr_link: task.pr_link ?? null });
       return { status: "ok", next_agent: null };
     }
 

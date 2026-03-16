@@ -527,6 +527,30 @@ export function usePipelineEvents(projectId: string | null) {
               askingAgent: false,
             };
           });
+          if (data.type === "task_completed") {
+            const prLink = (data as Record<string, unknown>).pr_link as string | null | undefined;
+            const activeTab = store.pipelineAgentTab;
+            if (activeTab) {
+              const separator = "────────────────────────────────────";
+              let finishMsg = `${separator}\n✅ Task finished!`;
+              if (prLink) {
+                finishMsg += `\n🔗 Pull Request: ${prLink}`;
+              }
+              finishMsg += `\n${separator}`;
+              updateTerminals((snap) => {
+                const terminal = snap.agentTerminals[activeTab] || { ...EMPTY_TERMINAL, messages: [] };
+                return {
+                  agentTerminals: {
+                    ...snap.agentTerminals,
+                    [activeTab]: {
+                      ...terminal,
+                      messages: [...terminal.messages, { role: "system" as const, content: finishMsg }],
+                    },
+                  } as Record<string, AgentTerminalState>,
+                };
+              });
+            }
+          }
           if (store.activeProjectId) {
             store.fetchTasks(store.activeProjectId);
           }

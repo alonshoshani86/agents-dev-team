@@ -315,6 +315,25 @@ async function executeAgent(
   execution.setRunner(runner);
   let fullResponse = "";
 
+  const onPrLink = async (url: string) => {
+    try {
+      const taskPath = path.join(
+        storage.projectTasksDir(execution.projectId),
+        execution.taskId,
+        "task.json",
+      );
+      const taskData = await storage.readJson<Record<string, unknown>>(taskPath);
+      if (taskData) {
+        taskData.pr_link = url;
+        taskData.updated_at = storage.nowIso();
+        await storage.writeJson(taskPath, taskData);
+        console.log(`[engine] PR link captured for task ${execution.taskId}: ${url}`);
+      }
+    } catch (err) {
+      console.error("[engine] Failed to persist pr_link:", err);
+    }
+  };
+
   // Permission handler: creates a promise, broadcasts the request, waits
   const onPermission = async (request: PermissionRequest): Promise<PermissionResponse> => {
     if (onEvent) {
@@ -386,6 +405,7 @@ async function executeAgent(
     context,
     onUsage: onUsage as never,
     onActivity: onActivity as never,
+    onPrLink,
   })) {
     if (execution.cancelled) break;
     fullResponse += chunk;
@@ -553,7 +573,12 @@ async function executePipelineLoop(
     if (onEvent) await onEvent({ type: "task_cancelled", task_id: execution.taskId });
   } else {
     await updateTask(execution.projectId, execution.taskId, { status: "completed" });
-    if (onEvent) await onEvent({ type: "task_completed", task_id: execution.taskId });
+    if (onEvent) {
+      const completedTaskData = await storage.readJson<Record<string, unknown>>(
+        path.join(storage.projectTasksDir(execution.projectId), execution.taskId, "task.json"),
+      );
+      await onEvent({ type: "task_completed", task_id: execution.taskId, pr_link: completedTaskData?.pr_link ?? null });
+    }
   }
 }
 
@@ -804,7 +829,12 @@ export async function runSingleAgent(
       await executePipelineLoop(execution, nextAgent, onEvent);
     } else {
       await updateTask(projectId, taskId, { status: "completed" });
-      if (onEvent) await onEvent({ type: "task_completed", task_id: taskId });
+      if (onEvent) {
+        const completedTaskData = await storage.readJson<Record<string, unknown>>(
+          path.join(storage.projectTasksDir(projectId), taskId, "task.json"),
+        );
+        await onEvent({ type: "task_completed", task_id: taskId, pr_link: completedTaskData?.pr_link ?? null });
+      }
     }
   } catch (err) {
     await updateTask(projectId, taskId, { status: "error" });
