@@ -111,7 +111,7 @@ export function ArtifactPanel({ projectId, taskId }: ArtifactPanelProps) {
 
     loadRunsAndContent();
     return () => { cancelled = true; };
-  }, [projectId, taskId, selectedIdx]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [projectId, taskId, selectedIdx, selected?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // When selectedRun changes due to user clicking a run tab, fetch that run's content.
   // Skip if we're in the middle of the initial tab-load (which already fetches content).
