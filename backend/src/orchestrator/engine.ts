@@ -270,13 +270,6 @@ async function executeAgent(
   await clearAgentTerminal(execution.projectId, execution.taskId, agentName);
 
   const agentDisplay = AGENT_DISPLAY[agentName] ?? agentName;
-  await appendTerminalMessage(
-    execution.projectId,
-    execution.taskId,
-    agentName,
-    "system",
-    `Starting ${agentDisplay} agent...`,
-  );
 
   // Show which artifacts are being passed as context
   const prevArtifacts = await listArtifacts(execution.projectId, execution.taskId);
