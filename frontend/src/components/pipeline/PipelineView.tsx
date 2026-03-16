@@ -560,41 +560,29 @@ export function PipelineView() {
         {task && (
           <div className="terminal-input-area">
             <span className="terminal-input-prompt">&gt;</span>
-            <div className="terminal-input-col">
-              {askingAgent && (
-                <div className="terminal-thinking-status">
-                  <span className="thinking-dots">
-                    <span className="dot-1" />
-                    <span className="dot-2" />
-                    <span className="dot-3" />
-                  </span>
-                  <span>Agent is thinking…</span>
-                </div>
-              )}
-              <textarea
-                value={userInput}
-                onChange={(e) => setUserInput(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" && !e.shiftKey) {
-                    e.preventDefault();
-                    handleSubmitInput();
-                  }
-                }}
-                placeholder={
-                  pipelineWaitingInput || task?.status === "waiting_input"
-                    ? "Ask a question or provide your answer…"
-                    : pipelineChoosingAgent || task?.status === "choosing_agent"
-                      ? "Add context for the next agent… (Enter to send)"
-                      : task?.status === "running"
-                        ? "Ask a question or add instructions…"
-                        : task?.status === "completed" || task?.status === "failed" || task?.status === "cancelled"
-                          ? "Ask a follow-up question or type 'run dev' to run another agent…"
-                          : "Ask a question, add instructions, or type 'run dev' to start an agent…"
+            <textarea
+              value={userInput}
+              onChange={(e) => setUserInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !e.shiftKey) {
+                  e.preventDefault();
+                  handleSubmitInput();
                 }
-                rows={1}
-                autoFocus={pipelineWaitingInput}
-              />
-            </div>
+              }}
+              placeholder={
+                pipelineWaitingInput || task?.status === "waiting_input"
+                  ? "Ask a question or provide your answer…"
+                  : pipelineChoosingAgent || task?.status === "choosing_agent"
+                    ? "Add context for the next agent… (Enter to send)"
+                    : task?.status === "running"
+                      ? "Ask a question or add instructions…"
+                      : task?.status === "completed" || task?.status === "failed" || task?.status === "cancelled"
+                        ? "Ask a follow-up question or type 'run dev' to run another agent…"
+                        : "Ask a question, add instructions, or type 'run dev' to start an agent…"
+              }
+              rows={1}
+              autoFocus={pipelineWaitingInput}
+            />
             <div className="terminal-input-buttons">
               {/* Send is always enabled — available at any pipeline state or after agent finishes */}
               <button
