@@ -5,6 +5,7 @@
 import { readFileSync, accessSync, constants as fsConstants } from "fs";
 import { execFile, execFileSync, spawn } from "child_process";
 import { promisify } from "util";
+import { dirname } from "path";
 import * as storage from "../storage.js";
 import type { FastifyInstance } from "fastify";
 
@@ -137,16 +138,22 @@ export async function registerConfigRoutes(app: FastifyInstance): Promise<void> 
     // Use findNpx() which checks hardcoded paths first, then falls back to PATH via `which npx`
     const npx = findNpx() ?? "npx";
 
+    // Prepend the current node binary's directory so the child process uses the same
+    // Node version as the backend (not an older system node like /usr/local/bin/node v18.)
+    const nodeBinDir = dirname(process.execPath);
     const env: Record<string, string | undefined> = {
       ...process.env,
-      // Ensure node, npx, and sh are all findable
-      PATH: `/usr/local/bin:/opt/homebrew/bin:/bin:/usr/bin:${process.env.PATH ?? ""}`,
+      PATH: `${nodeBinDir}:/opt/homebrew/bin:/bin:/usr/bin:${process.env.PATH ?? ""}`,
     };
     // Remove SDK env vars that interfere with fresh claude-code invocations
     delete env["CLAUDECODE"];
     delete env["CLAUDE_CODE_ENTRYPOINT"];
     delete env["CLAUDE_CODE_ENABLE_SDK_FILE_CHECKPOINTING"];
     delete env["CLAUDE_AGENT_SDK_VERSION"];
+    // Remove OAuth/JWT tokens that cause JWT algorithm errors in child claude-code process
+    delete env["ANTHROPIC_ACCESS_TOKEN"];
+    delete env["ANTHROPIC_AUTH_TOKEN"];
+    delete env["ANTHROPIC_TOKEN"];
 
     try {
       const result = await new Promise<{ stdout: string; stderr: string }>((resolve, reject) => {
