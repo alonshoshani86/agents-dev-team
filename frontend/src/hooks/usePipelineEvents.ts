@@ -113,7 +113,6 @@ export function usePipelineEvents(projectId: string | null) {
 
         case "step_started": {
           const agent = data.agent as string;
-          const display = AGENT_DISPLAY[agent] || agent;
           updateTerminals((snap) => {
             const terminal = snap.agentTerminals[agent] || { ...EMPTY_TERMINAL, messages: [] };
             return {
@@ -122,8 +121,7 @@ export function usePipelineEvents(projectId: string | null) {
                 [agent]: {
                   ...terminal,
                   status: "working",
-                  streaming: true,
-                  messages: [...terminal.messages, { role: "system", content: `Starting ${display} agent...` }],
+                  streaming: false,
                 },
               },
               pipelineAgentTab: agent,
